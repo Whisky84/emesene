@@ -152,16 +152,27 @@ class InputText(TextBox):
         self.apply_tag()
 
         if event.state == gtk.gdk.CONTROL_MASK and \
-                chr(event.keyval) == "p":
+                ((event.keyval < 256 and chr(event.keyval) == "p") or \
+                    event.keyval == gtk.keysyms.Up):
+
             self.on_cycle_history()
+
+        elif event.state == gtk.gdk.CONTROL_MASK and \
+                ((event.keyval < 256 and chr(event.keyval) == "n") or \
+                    event.keyval == gtk.keysyms.Down):
+
+            self.on_cycle_history(1)
+
         elif (event.keyval == gtk.keysyms.Return or \
                 event.keyval == gtk.keysyms.KP_Enter) and \
                 not event.state == gtk.gdk.SHIFT_MASK:
+
             if self.text == "":
                 return True
 
             self.on_send_message(self.text)
             self.text = ''
+
             return True
 
     def parse_emotes(self):
