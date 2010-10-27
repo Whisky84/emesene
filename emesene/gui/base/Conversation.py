@@ -17,6 +17,9 @@ class Conversation(object):
     def __init__(self, session, cid, members=None):
         '''constructor'''
         self.session = session
+        self.caches = e3.cache.CacheManager(self.session.config_dir.base_dir)
+        self.emcache = self.caches.get_emoticon_cache(self.session.account.account)
+
         self.cid = float(cid)
         self.formatter = e3.common.MessageFormatter(session.contacts.me)
         self.first = True
@@ -196,16 +199,18 @@ class Conversation(object):
 
     group_chat = property(fget=_get_group_chat)
 
-    def _on_send_message(self, text, cedict=None):
+    def _on_send_message(self, text):
         '''method called when the user press enter on the input text'''
-        self.session.send_message(self.cid, text, self.cstyle)
+        custom_emoticons = gui.base.MarkupParser.get_custom_emotes(text, self.emcache.parse())
+
+        self.session.send_message(self.cid, text, self.cstyle, self.emcache.parse(), custom_emoticons)
         self.output.send_message(self.formatter, self.session.contacts.me,
-                text, cedict, self.cstyle, self.first)
+                text, self.emcache.parse(), self.emcache.path, self.cstyle, self.first)
         self.messages.push(text)
         self.play_send()
         self.first = False
 
-    def on_receive_message(self, message, account, cedict):
+    def on_receive_message(self, message, account, received_custom_emoticons):
         '''method called when a message arrives to the conversation'''
         contact = self.session.contacts.get(account)
 
@@ -213,8 +218,9 @@ class Conversation(object):
             contact = e3.Contact(account)
 
         if message.type == e3.Message.TYPE_MESSAGE:
+            user_emcache = self.caches.get_emoticon_cache(account)
             self.output.receive_message(self.formatter, contact, message,
-                    cedict, self.first)
+                    received_custom_emoticons, user_emcache.path, self.first)
             self.play_type()
 
         elif message.type == e3.Message.TYPE_NUDGE:

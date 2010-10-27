@@ -40,7 +40,7 @@ if os.path.exists(papypath):
     sys.path.insert(0, papypath)
 
 try:
-    REQ_VER = (0, 5, 1)
+    REQ_VER = (0, 5, 2)
 
     import papyon
     import papyon.event
@@ -409,7 +409,7 @@ class Worker(e3.base.Worker, papyon.Client):
             papymessage.content, account, \
             formatting_papy_to_e3(papymessage.formatting))
         # convert papyon msnobjects to a simple dict {shortcut:identifier}
-        cedict = {}
+        received_custom_emoticons = {}
 
         emotes = self.caches.get_emoticon_cache(account)
         def download_failed(reason):
@@ -425,19 +425,19 @@ class Worker(e3.base.Worker, papyon.Client):
                 account, 'emoticon', emoticon_path)
 
         for shortcut, msn_object in papymessage.msn_objects.iteritems():
-            cedict[shortcut] = None
+            received_custom_emoticons[shortcut] = None
 
             emoticon_hash = msn_object._data_sha.encode("hex")
             emoticon_path = os.path.join(emotes.path, emoticon_hash)
 
             if emoticon_hash in emotes:
-                cedict[shortcut] = emoticon_path
+                received_custom_emoticons[shortcut] = emoticon_path
             else:
                 self.msn_object_store.request(msn_object, \
                     (download_ok, download_failed))
 
         self.session.add_event(\
-            Event.EVENT_CONV_MESSAGE, cid, account, msgobj, cedict)
+            Event.EVENT_CONV_MESSAGE, cid, account, msgobj, received_custom_emoticons)
 
     def _on_conversation_nudge_received(self, papycontact, pyconvevent):
         ''' handle received nudges '''
@@ -964,7 +964,7 @@ class Worker(e3.base.Worker, papyon.Client):
         papycontact = self.address_book.contacts.search_by('account', account)[0]
         conv._invite_user(papycontact)
 
-    def _handle_action_send_message(self, cid, message):
+    def _handle_action_send_message(self, cid, message, cedict={}, l_custom_emoticons=[]):
         ''' handle Action.ACTION_SEND_MESSAGE '''
         #print "you're guin to send %(msg)s in %(ci)s" % \
         #{ 'msg' : message, 'ci' : cid }
@@ -977,8 +977,29 @@ class Worker(e3.base.Worker, papyon.Client):
         elif message.type == e3.base.Message.TYPE_MESSAGE:
             # format the text for papy
             formatting = formatting_e3_to_papy(message.style)
+            emoticon_cache = self.caches.get_emoticon_cache(self.session.account.account)
+            d_msn_objects = {}
+
+            for custom_emoticon in l_custom_emoticons:
+                try:
+                    fpath = os.path.join(emoticon_cache.path, cedict[custom_emoticon])
+                    f = open(fpath, 'rb')
+                    d_custom_emoticon = f.read()
+                    f.close()
+                except Exception as e:
+                    print e
+                if not isinstance(d_custom_emoticon, str):
+                    d_custom_emoticon = "".join([chr(b) for b in d_custom_emoticon])
+
+                msn_object = papyon.p2p.MSNObject(self.session.account.account,
+                                len(d_custom_emoticon),
+                                papyon.p2p.MSNObjectType.CUSTOM_EMOTICON,
+                                cedict[custom_emoticon],
+                                custom_emoticon, None, None,
+                                data=StringIO.StringIO(d_custom_emoticon))
+                d_msn_objects[custom_emoticon] = msn_object
             # create papymessage
-            msg = papyon.ConversationMessage(message.body, formatting)
+            msg = papyon.ConversationMessage(message.body, formatting, d_msn_objects)
             # send through the network
             papyconversation.send_text_message(msg)
 
