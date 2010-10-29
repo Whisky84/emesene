@@ -136,14 +136,16 @@ class Worker(e3.base.Worker, papyon.Client):
 
     def _content_roaming_state_changed(self, cr, pspec):
         if cr.state == CR.constants.ContentRoamingState.SYNCHRONIZED:
-            type, data = cr.display_picture
-            handle, path = tempfile.mkstemp(suffix="."+type.split('/')[1], prefix='emsnpic')
-            os.close(handle)
+            picfail = False            
             try:
+                type, data = cr.display_picture
+                handle, path = tempfile.mkstemp(suffix="."+type.split('/')[1], prefix='emsnpic')
+                os.close(handle)
                 f = open(path, 'wb')
                 f.write(data)
                 f.close()
             except Exception as e:
+                picfail = True
                 print e
             # update roaming stuff in papyon's session
             # changing display_name doesn't seem to update its value istantly, wtf?
@@ -155,7 +157,8 @@ class Worker(e3.base.Worker, papyon.Client):
             self.session.add_event(Event.EVENT_PROFILE_GET_SUCCEED, \
                        str(cr.display_name), self.profile.personal_message)
 
-            self._handle_action_set_picture(path)
+            if not picfail:
+                self._handle_action_set_picture(path, True)
 
     def _set_status(self, stat):
         ''' changes the presence in papyon given an e3 status '''
@@ -489,9 +492,10 @@ class Worker(e3.base.Worker, papyon.Client):
         account = papycontact.account
         conv = pyconvevent.conversation
 
-        #that cid must be exists
+        #that cid must exists
         if conv in self.rpapyconv:
             cid = self.rpapyconv[conv]
+
             self.session.add_event(e3.Event.EVENT_CONV_CONTACT_LEFT,
                                    cid, account)
 
@@ -847,13 +851,6 @@ class Worker(e3.base.Worker, papyon.Client):
             print "set contact alias succeed"
             self.session.add_event(e3.Event.EVENT_CONTACT_ALIAS_SUCCEED, account)
 
-
-    # e3 action handlers - profile
-#                      TODO: this code stores your stuff, wow m3n
-#                      path = '/tmp/test.jpeg'
-#                      f = open(path, 'r')
-#                      cr.store("nick", "message", f.read())
-
     def _handle_action_change_status(self, status_):
         '''handle Action.ACTION_CHANGE_STATUS '''
         self._set_status(status_)
@@ -861,12 +858,14 @@ class Worker(e3.base.Worker, papyon.Client):
     def _handle_action_set_message(self, message):
         ''' handle Action.ACTION_SET_MESSAGE '''
         self.profile.personal_message = message
+        self.content_roaming.store(None, message, None)
 
     def _handle_action_set_nick(self, nick):
         '''handle Action.ACTION_SET_NICK '''
         self.profile.display_name = nick
+        self.content_roaming.store(nick, None, None)
 
-    def _handle_action_set_picture(self, picture_name):
+    def _handle_action_set_picture(self, picture_name, from_roaming=False):
         '''handle Action.ACTION_SET_PICTURE'''
         if isinstance(picture_name, papyon.p2p.MSNObject):
             #TODO: check if this can happen, and prevent it (!)
@@ -900,6 +899,8 @@ class Worker(e3.base.Worker, papyon.Client):
                                     self.session.account.account, avatar_path)
 
         self.session.contacts.me.picture = avatar_path
+        if not from_roaming:
+            self.content_roaming.store(None, None, picture_name)
 
     def _handle_action_set_preferences(self, preferences):
         '''handle Action.ACTION_SET_PREFERENCES
@@ -970,7 +971,9 @@ class Worker(e3.base.Worker, papyon.Client):
         #{ 'msg' : message, 'ci' : cid }
         #print "type:", message
         # find papyon conversation by cid
+
         papyconversation = self.papyconv[cid]
+
         if message.type == e3.base.Message.TYPE_NUDGE:
             papyconversation.send_nudge()
 

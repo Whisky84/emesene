@@ -135,9 +135,7 @@ class ConversationManager(gtk.Notebook, gui.ConversationManager):
         page = self.get_nth_page(page_num)
         self.session.add_event(e3.Event.EVENT_MESSAGE_READ, page_num)
         self.set_message_waiting(page, False)
-        parent = self.get_parent()
-        parent.set_title(Renderers.msnplus_to_plain_text(page.text))
-        parent.set_icon(page.icon)
+        self.update_window(page.text, page.icon, self.get_current_page())
 #        glib.idle_add(self._on_switch_page_grab_focus)
 
     def _on_switch_page_grab_focus(self):
@@ -181,7 +179,7 @@ class ConversationManager(gtk.Notebook, gui.ConversationManager):
         """
         Conversation = extension.get_default('conversation')
         TabWidget = extension.get_default('conversation tab')
-        conversation = Conversation(self.session, cid, None, members)
+        conversation = Conversation(self.session, cid, self.update_window, None, members)
         label = TabWidget('Connecting', self._on_tab_menu, self._on_tab_close,
             conversation)
         label.set_image(gui.theme.connect)
@@ -191,4 +189,12 @@ class ConversationManager(gtk.Notebook, gui.ConversationManager):
         self.set_tab_reorderable(conversation, True)
 
         return conversation
+
+    def update_window(self, text, icon, index):
+        ''' updates the window's border and item on taskbar
+            with given text and icon '''
+        if self.get_current_page() == index:
+            win = self.get_parent() # gtk.Window, not a nice hack.
+            win.set_title(Renderers.msnplus_to_plain_text(text))
+            win.set_icon(icon)
 
