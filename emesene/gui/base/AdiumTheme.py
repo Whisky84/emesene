@@ -105,6 +105,7 @@ class AdiumTheme(object):
         '''
 
         msgtext = MarkupParser.replace_emotes(escape(msg.message), cedict, cedir)
+        msgtext = MarkupParser.urlify(msgtext)
 
         if style is not None:
             msgtext = style_message(msgtext, style)
@@ -119,8 +120,14 @@ class AdiumTheme(object):
         template = template.replace('%messageDirection%',
             escape(msg.direction))
         template = template.replace('%message%', msgtext)
-        template = template.replace('%time%',
-            escape(time.strftime(self.timefmt)))
+        msg.timestamp = None
+        if msg.timestamp is None:
+            template = template.replace('%time%',
+                escape(time.strftime(self.timefmt)))
+        else:
+            template = template.replace('%time%',
+                escape(time.strftime(self.timefmt, msg.timestamp)))
+
         template = re.sub("%time{(.*?)}%", replace_time, template)
         template = template.replace('%shortTime%',
             escape(time.strftime("%H:%M")))
@@ -197,7 +204,10 @@ def read_file(*args):
 __dic = {
     '\"': '&quot;',
     '\'': '&apos;',
-    '\n': '<br>'
+    '\\': '\\\\',
+    '\r\n': '<br>', #windows
+    '\r': '<br>', #osx
+    '\n': '<br>' #linux
 }
 
 __dic_inv = {
