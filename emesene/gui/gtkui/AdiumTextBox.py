@@ -149,7 +149,7 @@ class OutputText(gtk.ScrolledWindow):
 
     def _error_cb(self, view, message, line, source_id):
         '''called when a message is sent to the console'''
-        message = _("Webkit message: %s %s %s") % (message, line, source_id)
+        message = "Webkit message: %s %s %s" % (message, line, source_id)
         log.debug(message)
 
     def _loading_stop_cb(self, view, frame):
@@ -177,4 +177,12 @@ class OutputText(gtk.ScrolledWindow):
         # TODO: make it with a status message
         msg = gui.Message.from_contact(contact, message, False, True)
         self.view.add_message(msg, None, None, None)
+
+    def update_p2p(self, *what):
+        ''' new p2p data has been received (custom emoticons) '''
+        account, _type, obj = what
+        if _type == 'emoticon':
+            short, path = obj
+            mystr = "var now=new Date();document.images['%s'].src='%s?'+now.getTime();" % (short, path)
+            self.view.execute_script(mystr.replace("\0", ""))
 

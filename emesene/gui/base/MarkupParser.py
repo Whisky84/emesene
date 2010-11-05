@@ -79,10 +79,13 @@ def replace_emotes(msgtext, cedict={}, cedir=None):
             if shortcut in gui.Theme.EMOTES.keys():
                 path = gui.theme.emote_to_path(shortcut)
             else:
-                path = os.path.join(cedir, cedict[shortcut])
+                if cedict[shortcut] is not None:
+                    path = os.path.join(cedir, cedict[shortcut])
+                else:
+                    path = None
 
             if path is not None:
-                imgtag = '<img src="%s" alt="%s"/>' % (path, shortcut)
+                imgtag = '<img src="%s" alt="%s" name="%s"/>' % (path, shortcut, shortcut)
                 msgtext = msgtext.replace(shortcut, imgtag)
 
     return msgtext
