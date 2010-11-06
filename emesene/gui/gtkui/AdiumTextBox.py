@@ -3,6 +3,8 @@ import gtk
 import logging
 log = logging.getLogger('gtkui.AdiumTextBox')
 import webkit
+import base64
+import xml.sax.saxutils
 
 import webbrowser
 
@@ -167,7 +169,7 @@ class OutputText(gtk.ScrolledWindow):
 
     def receive_message(self, formatter, contact, message, cedict, cedir, is_first):
         '''add a message to the widget'''
-        msg = gui.Message.from_contact(contact, message.body, is_first, True)
+        msg = gui.Message.from_contact(contact, message.body, is_first, True, message.timestamp)
         # WARNING: this is a hack to keep out config from backend libraries
         message.style.size = self.config.get_or_set("i_font_size", 10)
         self.view.add_message(msg, message.style, cedict, cedir)
@@ -178,11 +180,10 @@ class OutputText(gtk.ScrolledWindow):
         msg = gui.Message.from_contact(contact, message, False, True)
         self.view.add_message(msg, None, None, None)
 
-    def update_p2p(self, *what):
+    def update_p2p(self, account, _type, *what):
         ''' new p2p data has been received (custom emoticons) '''
-        account, _type, obj = what
         if _type == 'emoticon':
-            short, path = obj
-            mystr = "var now=new Date();document.images['%s'].src='%s?'+now.getTime();" % (short, path)
-            self.view.execute_script(mystr.replace("\0", ""))
-
+            _creator, _friendly, path = what
+            _id = base64.b64encode(_creator+xml.sax.saxutils.unescape(_friendly)) #see gui/base/MarkupParser.py
+            mystr = "var now=new Date();var x=document.images;for(var i=0;i<x.length;i++){if(x[i].name=='%s'){x[i].src='%s?'+now.getTime();}}" % (_id, path)
+            self.view.execute_script(mystr)
