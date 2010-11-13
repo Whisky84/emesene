@@ -33,6 +33,7 @@ import shutil
 import string
 
 import debugger
+debugger.init()
 import logging
 log = logging.getLogger('emesene')
 
