@@ -222,6 +222,7 @@ class ChatWidget(gtk.VBox):
         self.set_border_width(2)
         all = gtk.HBox()
         all.set_border_width(2)
+        self.first = True
 
         self.calendars = gtk.VBox()
         self.calendars.set_border_width(2)
@@ -253,14 +254,12 @@ class ChatWidget(gtk.VBox):
 
         self.from_calendar = gtk.Calendar()
         from_year, from_month, from_day = self.from_calendar.get_date()
+        from_datetime = datetime.date(from_year, from_month,
+                from_day) - datetime.timedelta(30)
 
-        if from_month == 0:
-            from_month = 11
-            from_year -= 1
-        else:
-            from_month -= 1
+        from_t = from_datetime.timetuple()
 
-        self.from_calendar.select_month(from_month, from_year)
+        self.from_calendar.select_month(from_t.tm_mon, from_year)
         self.to_calendar = gtk.Calendar()
 
         save.connect('clicked', self._on_save_clicked)
@@ -343,24 +342,38 @@ class ChatWidget(gtk.VBox):
         if not results:
             return
 
-        for (stat, timestamp, message, nick) in results:
+        for stat, timestamp, msg_text, nick, account in results:
             date_text = time.strftime('[%c]', time.gmtime(timestamp))
-            tokens = message.split('\r\n', 3)
+            tokens = msg_text.split('\r\n', 3)
             type_ = tokens[0]
 
-            # XXX: hack, I don't have the mail here FIXME
-            contact = e3.Contact(nick)
+            if len(tokens) >= 4:
+                msg_body = tokens[3]
+            else:
+                msg_body = ""
+
+            contact = e3.Contact(account, nick=nick)
 
             if type_ == 'text/x-msnmsgr-datacast':
-                self.output.information(self.formatter, contact,
-                    _('%s just sent you a nudge!') % (nick,))
+                text =  _('%s just sent you a nudge!') % (nick,)
+                self.text.information(self.formatter, contact, text)
+                self.first = False
             elif type_.find('text/plain;') != -1:
-                try:
-                    (type_, format, empty, text) = tokens
-                    self.text.add_message(self.formatter.format_history(
-                        date_text, nick, text))
-                except ValueError:
-                    log.debug(_('Invalid number of tokens') + str(tokens))
+                is_me = self.session.contacts.me.account == account
+                incoming = not is_me
+                datetimestamp = datetime.datetime.fromtimestamp(timestamp)
+
+                message = e3.Message(e3.Message.TYPE_MESSAGE, msg_body,
+                        account, timestamp=datetimestamp)
+
+                if is_me:
+                    self.text.send_message(self.formatter, contact,
+                            msg_body, None, None, None, self.first)
+                else:
+                    self.text.receive_message(self.formatter, contact, message,
+                            None, None, self.first)
+
+                self.first = False
             else:
                 log.debug(_('unknown message type on ContactInfo'))
 
