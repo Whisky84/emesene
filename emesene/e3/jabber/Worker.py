@@ -102,7 +102,7 @@ class Worker(e3.Worker):
         contact.message = message
         contact.status = stat
 
-        log_account =  e3.Logger.Account(contact.attrs.get('CID', None), None,
+        log_account =  e3.Logger.Account(contact.cid, None,
             contact.account, contact.status, contact.nick, contact.message,
             contact.picture)
 
@@ -150,6 +150,12 @@ class Worker(e3.Worker):
 
         msgobj = e3.Message(type_, body, account)
         self.session.add_event(e3.Event.EVENT_CONV_MESSAGE, cid, account, msgobj)
+
+        # log message
+        contact = self.session.contacts.get(account)
+        src = e3.Logger.Account.from_contact(contact)
+        dest  = e3.Logger.Account.from_contact(self.session.contacts.me)
+        self.session.logger.log('message', contact.status, body, src, dest)
 
     # action handlers
     def _handle_action_add_contact(self, account):
@@ -224,7 +230,7 @@ class Worker(e3.Worker):
             if account in self.session.contacts.contacts:
                 contact = self.session.contacts.contacts[account]
             else:
-                contact = e3.Contact(account)
+                contact = e3.Contact(account, cid=account)
                 self.session.contacts.contacts[account] = contact
 
             if name is not None:
@@ -336,6 +342,16 @@ class Worker(e3.Worker):
         for recipient in recipients:
             self.client.send(xmpp.protocol.Message(recipient, message.body,
                 'chat'))
+
+            # log message
+            contact = self.session.contacts.get(recipient)
+
+            if contact is None:
+                contact = e3.Contact(message.account)
+
+            src = e3.Logger.Account.from_contact(self.session.contacts.me)
+            dest = e3.Logger.Account.from_contact(contact)
+            self.session.logger.log('message', contact.status, message.body, src, dest)
 
     # p2p handlers
 
