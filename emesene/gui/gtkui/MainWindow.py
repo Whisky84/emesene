@@ -99,12 +99,8 @@ class MainWindow(gtk.VBox):
         dialog = extension.get_default('dialog')
         avatar_manager = extension.get_default('avatar manager')
 
-        # TODO: probably there's no need to instantiate it from here, now.
-        # (instantiate directly in MenuHandler)
-        am = gui.base.AvatarManager(self.session)
-
         handler = gui.base.MenuHandler(self.session, dialog, self.contact_list,
-            am, self.on_disconnect, self.on_close)
+            self.on_disconnect, self.on_close)
 
         contact_handler = gui.base.ContactHandler(self.session, dialog,
             self.contact_list)
@@ -134,7 +130,7 @@ class MainWindow(gtk.VBox):
 
     def _on_entry_changed(self, entry, *args):
         '''called when the text on entry changes'''
-        self.contact_list.filter_text = entry.get_text()
+        self.contact_list.filter_text = entry.get_text().lower()
 
     def _on_entry_key_press(self, entry, event):
         '''called when a key is pressed on the search box'''

@@ -2,9 +2,9 @@
 
 #   This file is part of emesene.
 #
-#    Emesene is free software; you can redistribute it and/or modify
+#    emesene is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation; either version 2 of the License, or
+#    the Free Software Foundation; either version 3 of the License, or
 #    (at your option) any later version.
 #
 #    emesene is distributed in the hope that it will be useful,
@@ -23,7 +23,7 @@ class ContactList(object):
     '''an abstract class that defines the api that the contact list should
     have'''
     NICK_TPL = \
-        '[$DISPLAY_NAME][$NL][$small][$ACCOUNT][$/small][$NL][$small]([$STATUS]) - [$MESSAGE][$/small]'
+        '[$DISPLAY_NAME][$NL][$small][$ACCOUNT][$/small][$NL][$small][$BLOCKED]([$STATUS]) - [$MESSAGE][$/small]'
 
     GROUP_TPL = '[$b][$NAME] ([$ONLINE_COUNT]/[$TOTAL_COUNT])[$/b]'
 
@@ -316,10 +316,12 @@ class ContactList(object):
                 self.escape_tags(contact.display_name))
 
         blocked_text = ''
+
         if contact.blocked:
-            blocked_text = '(blocked)'
+            blocked_text = _('blocked')
 
         template = template.replace('[$BLOCKED]', blocked_text)
+
 
         return template
 

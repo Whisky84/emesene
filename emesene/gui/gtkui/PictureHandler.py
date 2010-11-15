@@ -2,9 +2,15 @@
 
 #   This file is part of emesene.
 #
+<<<<<<< HEAD
 #    Emesene is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation; either version 2 of the License, or
+=======
+#    emesene is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 3 of the License, or
+>>>>>>> 383a132f87a76c0c293ef1e5d17a6680195ba11e
 #    (at your option) any later version.
 #
 #    emesene is distributed in the hope that it will be useful,
@@ -44,12 +50,20 @@ class PictureHandler (base.PictureHandler):
             self._is_animated = True
     
     
+<<<<<<< HEAD
     def resize(self, new_size):
         '''Resizes to new_size the given avatar pix. Overrides base's 
         class abstract method.'''
         if not self.is_animated():
             self._pixbuf = self._pixbuf.scale_simple(new_size, new_size, 
                                                    gtk.gdk.INTERP_BILINEAR)
+=======
+    def _resize(self, new_size):
+        '''Resizes to new_size the given avatar pix. Overrides base's 
+        class abstract method.'''
+        self._pixbuf = self._pixbuf.scale_simple(new_size, new_size, 
+                                                 gtk.gdk.INTERP_BILINEAR)
+>>>>>>> 383a132f87a76c0c293ef1e5d17a6680195ba11e
         
             
     def _save(self, dest_filename):
@@ -58,9 +72,16 @@ class PictureHandler (base.PictureHandler):
         self._source_filename = dest_filename
         
         
+<<<<<<< HEAD
     def is_animated(self):
         '''Returns true if the image is an animation'''
         return self._is_animated
+=======
+    def can_handle(self):
+        '''Returns true if the image is an animation'''
+        return not self._is_animated
+        
+>>>>>>> 383a132f87a76c0c293ef1e5d17a6680195ba11e
         
     @staticmethod
     def from_toolkit(pix):

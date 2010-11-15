@@ -54,7 +54,7 @@ Providing extensions
 
 #   This file is part of emesene.
 #
-#    Emesene is free software; you can redistribute it and/or modify
+#    emesene is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation; either version 3 of the License, or
 #    (at your option) any later version.
@@ -425,8 +425,10 @@ def get_instance(category_name):
     Otherwise None
     '''
     category = get_category(category_name)
+
     if category is not None:
         return category.get_instance()
+
     return None
 
 
@@ -439,8 +441,10 @@ def get_and_instantiate(category_name, *args, **kwargs):
     return that one, NOT a new one.
     '''
     category = get_category(category_name)
+
     if category is not None:
         return category.get_and_instantiate(*args, **kwargs)
+
     return None
 
 

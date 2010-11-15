@@ -2,9 +2,9 @@
 
 #   This file is part of emesene.
 #
-#    Emesene is free software; you can redistribute it and/or modify
+#    emesene is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation; either version 2 of the License, or
+#    the Free Software Foundation; either version 3 of the License, or
 #    (at your option) any later version.
 #
 #    emesene is distributed in the hope that it will be useful,
@@ -1202,7 +1202,9 @@ class EmotesWindow(gtk.Window):
                 log.debug(shortcut + ' has no path')
                 continue
 
-            button.set_image(utils.safe_gtk_image_load(path))
+            button.set_image(utils.safe_gtk_image_load(path, (20, 20)))
+            button.set_tooltip_text(shortcut)
+            button.set_relief(gtk.RELIEF_NONE)
             button.connect('clicked', self._on_emote_selected, shortcut)
             self.table.attach(button, column, column + 1, row, row + 1)
 
@@ -1216,7 +1218,9 @@ class EmotesWindow(gtk.Window):
             button = gtk.Button()
             path = os.path.join(self.emcache.path, hash_)
 
-            button.set_image(utils.safe_gtk_image_load(path))
+            button.set_image(utils.safe_gtk_image_load(path, (20, 20)))
+            button.set_tooltip_text(shortcut)
+            button.set_relief(gtk.RELIEF_NONE)
             button.connect('clicked', self._on_emote_selected, shortcut)
             self.table.attach(button, column, column + 1, row, row + 1)
 

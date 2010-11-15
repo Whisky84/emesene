@@ -54,15 +54,13 @@ class IconView(gtk.HBox):
                     name = os.path.splitext(path)[0]
                     if self.stop:
                         return False
+                    full_path = os.path.join(search_path, path)
                     if not name.endswith('_thumb') and \
-                        not path.endswith('tmp') and   \
-                        not path.endswith('xml') and   \
-                        not path.endswith('db') and    \
-                        not path.endswith('info') and  \
-                        not path.endswith('last') and  \
-                        not path.endswith('avatars'):
+                        not path.endswith(('tmp', 'xml', 'db', 'info',
+                                           'last', 'avatars')) and \
+                        not os.path.isdir(full_path):
                         gtk.gdk.threads_enter()
-                        self.add_picture(os.path.join(search_path, path))
+                        self.add_picture(full_path)
                         # make update the iconview
                         self.iconview.queue_draw()
                         gtk.gdk.threads_leave()        
@@ -121,6 +119,7 @@ class IconView(gtk.HBox):
                 except gobject.GError:
                     print _('image at %s could not be loaded') % (path, )
                     print gobject.GError                      
+                    return
  
                 # On nt images are 128x128 (48x48 on xp)
                 # On kde, images are 64x64

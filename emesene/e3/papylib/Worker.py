@@ -7,7 +7,7 @@
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
@@ -27,6 +27,7 @@ import gobject
 import hashlib
 import tempfile
 
+import e3
 from e3 import cache
 from e3.base import *
 import e3.base.Logger as Logger
@@ -46,6 +47,7 @@ try:
     import papyon.event
     import papyon.service.ContentRoaming as CR
     import papyon.util.string_io as StringIO
+
     papyver = papyon.version
     if papyver[1] == REQ_VER[1]:
         if papyver[2] < REQ_VER[2]:
@@ -59,7 +61,8 @@ except Exception, e:
 from PapyEvents import *
 from PapyConvert import *
 try:
-    from PapyConference import *
+    import papyon.media.conference
+    import papyon.media.constants
 except Exception, e:
     log.exception("You need gstreamer to use the webcam support")
 
@@ -86,7 +89,7 @@ class Worker(e3.base.Worker, papyon.Client):
         self._abook_handler = AddressBookEvent(self)
         self._profile_handler = ProfileEvent(self)
         self._oim_handler = OfflineEvent(self)
-        self._roaming_handler = None
+
         # this stores account : cid
         self.conversations = {}
         # this stores cid : account
@@ -99,7 +102,10 @@ class Worker(e3.base.Worker, papyon.Client):
         self._conversation_handler = {}
         # store ongoing filetransfers
         self.filetransfers = {}
-        self.rfiletransfers = {} 
+        self.rfiletransfers = {}
+        # store ongoing calls
+        self.calls = {}
+        self.rcalls = {}
 
     def run(self):
         '''main method, block waiting for data, process it, and send data back
@@ -259,11 +265,15 @@ class Worker(e3.base.Worker, papyon.Client):
 
     def _on_conference_invite(self, call):
         print "New conference invite", call
-        callsess = MediaSessionHandler(call.media_session)
-        callhandler = CallEvent(call, self)
+        ca = e3.base.Call(call, call.peer, None, None, None)
+        self.calls[call] = ca
+        self.rcalls[ca] = call
+        call_handler = CallEvent(call, self)
         call.ring()
         # leave the accept stuff to the call event handler
         # because codecs aren't ready yet
+        
+        self.session.add_event(Event.EVENT_CALL_INVITATION, ca)
 
     def _on_invite_file_transfer(self, papysession):
         tr = e3.base.FileTransfer(papysession, papysession.filename, \
@@ -298,11 +308,11 @@ class Worker(e3.base.Worker, papyon.Client):
     def papy_ft_progressed(self, ftsession, len_chunk):
         tr = self.filetransfers[ftsession]
         tr.received_data += len_chunk
-        
+
         self.session.add_event(Event.EVENT_FILETRANSFER_PROGRESS, tr)
 
     def papy_ft_completed(self, ftsession, data):
-        #print "data:", len(data.getvalue())        
+        #print "data:", len(data.getvalue())
         # TODO: save the file somewhere and kill the dicts
         tr = self.filetransfers[ftsession]
         if tr.sender == 'Me':
@@ -310,16 +320,16 @@ class Worker(e3.base.Worker, papyon.Client):
             pass
         else:
             sender = tr.sender
+            fname = tr.filename
             # TODO: save somewhere else the data!
             handle, path = tempfile.mkstemp(suffix=".temp", prefix='emesenefile')
-            os.close(handle)
             try:
                 f = open(path, 'wb')
-                f.write(data)
+                f.write(data.getvalue())
                 f.close()
             except Exception as e:
                 print e
-
+            os.close(handle)
         #del self.rfiletransfers[tr]
 
         self.session.add_event(Event.EVENT_FILETRANSFER_COMPLETED, tr)
@@ -333,47 +343,55 @@ class Worker(e3.base.Worker, papyon.Client):
     # call handlers
     def _on_call_incoming(self, papycallevent):
         """Called once the incoming call is ready."""
-        print "[papyon]", "[call] ready", papycallevent._call.media_session.prepared, papycallevent._call.media_session.ready
+        print "call incoming"
         if papycallevent._call.media_session.prepared:
             papycallevent._call.accept()
-            print "wut"
+            print "accepting call"
         else:
             papycallevent._call.ring()
-            print "ring"
+            print "ringing (session not ready)"
 
     def _on_call_ringing(self, papycallevent):
-        """Called when we received a ringing response from the callee."""
         print "[papyon]", "[call] ringing"
 
     def _on_call_accepted(self, papycallevent):
-        """Called when the callee accepted the call."""
         print "[papyon]", "[call] accepted"
 
     def _on_call_rejected(self, papycallevent, response):
-        """Called when the callee rejected the call.
-            @param response: response associated with the rejection
-            @type response: L{SIPResponse<papyon.sip.SIPResponse>}"""
         print "[papyon]", "[call] rejected", response
 
     def _on_call_error(self, papycallevent, response):
-        """Called when an error is sent by the other party.
-            @param response: response associated with the error
-            @type response: L{SIPResponse<papyon.sip.SIPResponse>}"""
         print "[papyon]", "[call] err", response
 
     def _on_call_missed(self, papycallevent):
-        """Called when the call is missed."""
         print "[papyon]", "[call] missd"
 
     def _on_call_connected(self, papycallevent):
-        """Called once the call is connected."""
         print "[papyon]", "[call] connected"
 
     def _on_call_ended(self, papycallevent):
-        """Called when the call is ended."""
         print "[papyon]", "[call] ended"
 
     # conversation handlers
+    def _on_conversation_oim_received(self, flnmsg):
+        ''' handle offline messages '''
+        account = flnmsg.sender.account
+        msg = str(flnmsg)
+
+        if account in self.conversations:
+            cid = self.conversations[account]
+        else:
+            cid = time.time()
+            self._handle_action_new_conversation(account, cid)
+            self.session.add_event(Event.EVENT_CONV_FIRST_ACTION, cid,
+                [account])
+
+        msgobj = e3.base.Message(e3.base.Message.TYPE_FLNMSG, \
+            msg, account, None, flnmsg.date)
+        self.session.add_event(\
+            Event.EVENT_CONV_MESSAGE, cid, account, msgobj, {})
+        e3.Logger.log_message(self.session, None, msgobj, False)
+
     def _on_conversation_user_typing(self, papycontact, pyconvevent):
         ''' handle user typing event '''
         account = papycontact.account
@@ -418,29 +436,33 @@ class Worker(e3.base.Worker, papyon.Client):
         def download_failed(reason):
             print reason
 
-        def download_ok(msnobj, download_failed_func):
+        def download_ok(msnobj, em_path, download_failed_func):
             if msnobj._data is None:
                 log.warning("[papylib] downloaded msnobj is None")
                 return
 
-            emotes.insert_raw((msnobj._friendly, msnobj._data))
+            mo_fr = msnobj._friendly.replace("\x00", "")
+            emotes.insert_raw((mo_fr, msnobj._data))
             self.session.add_event(Event.EVENT_P2P_FINISHED, \
-                account, 'emoticon', emoticon_path)
+                account, 'emoticon', msnobj._creator, mo_fr, em_path)
 
         for shortcut, msn_object in papymessage.msn_objects.iteritems():
+            if shortcut in received_custom_emoticons:
+                break # avoid multi p2p
             received_custom_emoticons[shortcut] = None
 
             emoticon_hash = msn_object._data_sha.encode("hex")
             emoticon_path = os.path.join(emotes.path, emoticon_hash)
 
-            if emoticon_hash in emotes:
-                received_custom_emoticons[shortcut] = emoticon_path
-            else:
+            received_custom_emoticons[shortcut] = emoticon_path
+
+            if emoticon_hash not in emotes:
                 self.msn_object_store.request(msn_object, \
-                    (download_ok, download_failed))
+                    (download_ok, emoticon_path, download_failed))
 
         self.session.add_event(\
             Event.EVENT_CONV_MESSAGE, cid, account, msgobj, received_custom_emoticons)
+        e3.Logger.log_message(self.session, None, msgobj, False)
 
     def _on_conversation_nudge_received(self, papycontact, pyconvevent):
         ''' handle received nudges '''
@@ -464,6 +486,7 @@ class Worker(e3.base.Worker, papyon.Client):
             account, None)
 
         self.session.add_event(Event.EVENT_CONV_MESSAGE, cid, account, msgobj)
+        e3.Logger.log_message(self.session, None, msgobj, False)
 
     def _on_conversation_message_error(self, err_type, error, papyconversation):
         #TODO: tell the user the sending failed, and the reason (err_type)
@@ -521,7 +544,7 @@ class Worker(e3.base.Worker, papyon.Client):
         contact.nick = nick
         status_ = contact.status
 
-        log_account = Logger.Account(contact.attrs.get('CID', None), None, \
+        log_account = Logger.Account(contact.cid, None, \
             contact.account, contact.status, contact.nick, contact.message, \
             contact.picture)
 
@@ -546,7 +569,7 @@ class Worker(e3.base.Worker, papyon.Client):
             self.session.add_event(Event.EVENT_CONTACT_ATTR_CHANGED, account, \
                 'message', old_message)
             self.session.logger.log('message change', contact.status, \
-                contact.message, Logger.Account(contact.attrs.get('CID', None),\
+                contact.message, Logger.Account(contact.cid,\
                     None, contact.account, contact.status, contact.nick, \
                     contact.message, contact.picture))
 
@@ -604,7 +627,7 @@ class Worker(e3.base.Worker, papyon.Client):
 
             if avatar_hash not in avatars:
                 self.msn_object_store.request(msn_object, \
-                    (download_ok, download_failed))
+                    (download_ok, download_failed), peer=contact)
 
     # address book events
     def _on_addressbook_messenger_contact_added(contact):
@@ -650,7 +673,7 @@ class Worker(e3.base.Worker, papyon.Client):
         self.session.account.status = stat
         # log the status
         contact = self.session.contacts.me
-        account = Logger.Account(contact.attrs.get('CID', None), None,
+        account = Logger.Account(contact.cid, None,
             contact.account, stat, contact.nick, contact.message,
             contact.picture)
 
@@ -663,7 +686,7 @@ class Worker(e3.base.Worker, papyon.Client):
         self.session.contacts.me.nick = display_name
 
         contact = self.session.contacts.me
-        account = Logger.Account(contact.attrs.get('CID', None), None,
+        account = Logger.Account(contact.cid, None,
             contact.account, contact.status, display_name, contact.message,
             contact.picture)
 
@@ -676,7 +699,7 @@ class Worker(e3.base.Worker, papyon.Client):
         self.session.contacts.me.message = message
         # log the change
         contact = self.session.contacts.me
-        account = Logger.Account(contact.attrs.get('CID', None), None,
+        account = Logger.Account(contact.cid, None,
             contact.account, contact.status, contact.nick, contact.message,
             contact.picture)
 
@@ -691,7 +714,7 @@ class Worker(e3.base.Worker, papyon.Client):
         self.session.contacts.me.message = message
         # log the change
         contact = self.session.contacts.me
-        account = Logger.Account(contact.attrs.get('CID', None), None,
+        account = Logger.Account(contact.cid, None,
             contact.account, contact.status, contact.nick, contact.message,
             contact.picture)
 
@@ -857,6 +880,8 @@ class Worker(e3.base.Worker, papyon.Client):
 
     def _handle_action_set_message(self, message):
         ''' handle Action.ACTION_SET_MESSAGE '''
+        if message is None:
+            message = ''
         self.profile.personal_message = message
         self.content_roaming.store(None, message, None)
 
@@ -900,7 +925,7 @@ class Worker(e3.base.Worker, papyon.Client):
 
         self.session.contacts.me.picture = avatar_path
         if not from_roaming:
-            self.content_roaming.store(None, None, picture_name)
+            self.content_roaming.store(None, None, avatar)
 
     def _handle_action_set_preferences(self, preferences):
         '''handle Action.ACTION_SET_PREFERENCES
@@ -965,7 +990,8 @@ class Worker(e3.base.Worker, papyon.Client):
         papycontact = self.address_book.contacts.search_by('account', account)[0]
         conv._invite_user(papycontact)
 
-    def _handle_action_send_message(self, cid, message, cedict={}, l_custom_emoticons=[]):
+    def _handle_action_send_message(self, cid, message,
+            cedict=None, l_custom_emoticons=None):
         ''' handle Action.ACTION_SEND_MESSAGE '''
         #print "you're guin to send %(msg)s in %(ci)s" % \
         #{ 'msg' : message, 'ci' : cid }
@@ -973,6 +999,14 @@ class Worker(e3.base.Worker, papyon.Client):
         # find papyon conversation by cid
 
         papyconversation = self.papyconv[cid]
+
+        if len(papyconversation.total_participants) == 1:
+            # XXX wariano: pop removes from the set, is that ok?
+            first_dude = papyconversation.total_participants.pop()
+            if first_dude.presence == papyon.Presence.OFFLINE and \
+                len(papyconversation._pending_invites) != 0: #avoid fake-offline
+                self.oim_box.send_message(first_dude, message.body)
+                message.type = e3.base.Message.TYPE_FLNMSG # don't process this.
 
         if message.type == e3.base.Message.TYPE_NUDGE:
             papyconversation.send_nudge()
@@ -982,6 +1016,9 @@ class Worker(e3.base.Worker, papyon.Client):
             formatting = formatting_e3_to_papy(message.style)
             emoticon_cache = self.caches.get_emoticon_cache(self.session.account.account)
             d_msn_objects = {}
+
+            if cedict is None: cedict = {}
+            if l_custom_emoticons is None: l_custom_emoticons = []
 
             for custom_emoticon in l_custom_emoticons:
                 try:
@@ -1006,29 +1043,8 @@ class Worker(e3.base.Worker, papyon.Client):
             # send through the network
             papyconversation.send_text_message(msg)
 
-        # log the message
-        contact = self.session.contacts.me
-        src =  Logger.Account(contact.attrs.get('CID', None), None, \
-            contact.account, contact.status, contact.nick, contact.message, \
-            contact.picture)
-
-        '''if error: # isn't there a conversation event like msgid ok or fail?
-            event = 'message-error'
-        else:
-            event = 'message'
-
-        for dst_account in papyconversation.accounts:
-            dst = self.session.contacts.get(dst_account)
-
-            if dst is None:
-                dst = e3.base.Contact(message.account)
-
-                dest =  Logger.Account(dst.attrs.get('CID', None), None, \
-                    dst.account, dst.status, dst.nick, dst.message, dst.picture)
-
-                self.session.logger.log(event, contact.status, msgstr,
-                    src, dest)
-        '''
+        members = [x.account for x in papyconversation.total_participants]
+        e3.Logger.log_message(self.session, members, message, True)
 
     # ft handlers
     def _handle_action_ft_invite(self, cid, account, filename, completepath):
@@ -1052,6 +1068,38 @@ class Worker(e3.base.Worker, papyon.Client):
     def _handle_action_ft_reject(self, t):
         self.rfiletransfers[t].reject()
 
+        del self.filetransfers[self.rfiletransfers[t]]
+        del self.rfiletransfers[t]
+
     def _handle_action_ft_cancel(self, t):
         self.rfiletransfers[t].cancel()
+
+        del self.filetransfers[self.rfiletransfers[t]]
+        del self.rfiletransfers[t]
+
+    # call handlers
+    def _handle_action_call_invite(self, cid, account):
+        papycontact = self.address_book.contacts.search_by('account', account)[0]
+        papysession = self.call_manager.create_call(peer)
+
+        ca = e3.base.Call(papysession, papycontact.account)
+        self.calls[papysession] = ca
+        self.rcalls[ca] = papysession
+        
+        self.session.add_event(Event.EVENT_CALL_INVITATION, ca)
+    
+    def _handle_action_call_accept(self, c):
+        self.rcalls[c].accept()
+
+    def _handle_action_call_reject(self, c):
+        self.rcalls[c].reject()
+
+        del self.calls[self.rcalls[c]]
+        del self.rcalls[c]
+
+    def _handle_action_call_cancel(self, c):
+        self.rcalls[c].cancel()
+
+        del self.calls[self.rcalls[c]]
+        del self.rcalls[c]
 

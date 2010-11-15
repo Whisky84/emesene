@@ -54,6 +54,7 @@ class MessageFormatter(object):
             '<span style="color: #A52A2A;"><b>%MESSAGE%</b></span>%NL%'
         self.nudge = \
             '<i>%DISPLAYNAME% sent you a nudge!</i>%NL%'
+        self.outgoing_nudge = '<i>'+_('You just sent a nudge!')+'</i>%NL%'
         self.history = '<div class="message-history">'\
             '<b>%TIME% %NICK%</b>: %MESSAGE%%NL%</div>'
 
@@ -87,7 +88,7 @@ class MessageFormatter(object):
         template = template.replace('%MESSAGE%', message)
         return template
 
-    def format(self, contact, message_type=None):
+    def format(self, contact, message_type=None, timestamp_override=None):
         '''format the message according to the template'''
         if message_type is None:
             message_type=e3.Message.TYPE_MESSAGE
@@ -117,9 +118,19 @@ class MessageFormatter(object):
                     template = self.outgoing
                 else:
                     template = self.incoming
+
+        if message_type == e3.Message.TYPE_FLNMSG:
+            template = self.offline_incoming
+            timestamp = timestamp_override
+
         if message_type == e3.Message.TYPE_NUDGE:
-            template = self.nudge
+            if outgoing:
+                template = self.outgoing_nudge
+            else:
+                template = self.nudge
+                
             self.last_message_sender = None
+
 
         formated_time = time.strftime('%c', time.gmtime(timestamp))
 
