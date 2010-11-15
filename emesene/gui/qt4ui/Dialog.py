@@ -372,6 +372,39 @@ class Dialog(object):
         print response
         
         response_cb(response)
+        
+        
+    @classmethod
+    def set_contact_alias(cls, account, alias, response_cb,
+                            title=_("Set alias")):
+        '''show a dialog showing the current alias and asking for the new
+        one, the response callback receives,  the response
+        (stock.ACCEPT, stock.CANCEL, stock.CLEAR <- to remove the alias
+        or stock.CLOSE), the account, the old and the new alias.
+        cb args: response, account, old_alias, new_alias'''
+        def reset_cb():
+            dialog.done(gui.stock.CLEAR)
+            
+        alias = alias or ''
+        
+        dialog = OkCancelDialog()
+        label = QtGui.QLabel("New alias: ")
+        edit = QtGui.QLineEdit()
+        
+        lay = QtGui.QHBoxLayout()
+        lay.addWidget(label, 100)
+        lay.addWidget(edit)
+        dialog.setLayout(lay)
+        
+        reset = dialog.add_button(QtGui.QDialogButtonBox.Reset)
+        dialog.setMinimumWidth(310)
+        edit.setText(alias)
+        
+        reset.clicked.connect(reset_cb)
+        
+        response = dialog.exec_()
+        response_cb(response, account, alias, unicode(edit.text()))
+        
 
         
     @classmethod
@@ -431,7 +464,7 @@ class StandardButtonDialog (QtGui.QDialog):
         self.button_box.rejected.connect(self._on_reject)
         
     def add_button(self, button):
-        self.button_box.addButton(button)
+        return self.button_box.addButton(button)
     
     def _on_accept(self):
         '''Slot called when Ok is clicked'''
