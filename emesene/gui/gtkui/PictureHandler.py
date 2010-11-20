@@ -21,62 +21,47 @@ import gtk
 from gui   import base
 
 
-class PictureHandler (base.PictureHandler): 
+class PictureHandler (base.PictureHandler):
     NAME = 'PictureHandler'
     DESCRIPTION = 'An object to manipulate images using ' \
                    'gui toolkit\'s facilities'
     AUTHOR = 'Gabriele "Whisky" Visconti'
     WEBSITE = ''
-    
+
     def __init__(self, source_filename=None):
         '''Constructor'''
         base.PictureHandler.__init__(self, source_filename)
         self._is_animated = False
-        
+
         if not source_filename:
             return
-            
+
         self._pixbuf = gtk.gdk.PixbufAnimation(source_filename)
         if self._pixbuf.is_static_image():
             self._pixbuf = gtk.gdk.pixbuf_new_from_file(source_filename)
             self._is_animated = False
         else:
             self._is_animated = True
-    
-    
-<<<<<<< HEAD
-    def resize(self, new_size):
-        '''Resizes to new_size the given avatar pix. Overrides base's 
-        class abstract method.'''
-        if not self.is_animated():
-            self._pixbuf = self._pixbuf.scale_simple(new_size, new_size, 
-                                                   gtk.gdk.INTERP_BILINEAR)
-=======
+
+
     def _resize(self, new_size):
-        '''Resizes to new_size the given avatar pix. Overrides base's 
+        '''Resizes to new_size the given avatar pix. Overrides base's
         class abstract method.'''
-        self._pixbuf = self._pixbuf.scale_simple(new_size, new_size, 
+        self._pixbuf = self._pixbuf.scale_simple(new_size, new_size,
                                                  gtk.gdk.INTERP_BILINEAR)
->>>>>>> 383a132f87a76c0c293ef1e5d17a6680195ba11e
-        
-            
+
+
     def _save(self, dest_filename):
         '''Saves the image to disk'''
         self._pixbuf.save(dest_filename, 'png')
         self._source_filename = dest_filename
-        
-        
-<<<<<<< HEAD
-    def is_animated(self):
-        '''Returns true if the image is an animation'''
-        return self._is_animated
-=======
+
+
     def can_handle(self):
         '''Returns true if the image is an animation'''
         return not self._is_animated
-        
->>>>>>> 383a132f87a76c0c293ef1e5d17a6680195ba11e
-        
+
+
     @staticmethod
     def from_toolkit(pix):
         '''Builds a PictureHandler object from a pix object, whose type
@@ -84,6 +69,3 @@ class PictureHandler (base.PictureHandler):
         picturehandler = PictureHandler()
         picturehandler._pixbuf = pix
         return picturehandler
-    
-    
-    
