@@ -8,6 +8,9 @@ import RichBuffer
 
 from gui.base import MarkupParser
 
+import logging
+log = logging.getLogger('gtkui.Textbox')
+
 class TextBox(gtk.ScrolledWindow):
     '''a text box inside a scroll that provides methods to get and set the
     text in the widget'''
@@ -160,8 +163,8 @@ class InputText(TextBox):
             import gtkspell
             if self.config.b_enable_spell_check:
                 self.spell_checker = gtkspell.Spell(self._textbox)
-        except ImportError as error:
-            pass
+        except Exception, e:
+            logger.warning("Could not load spell-check: %s" % e)
 
         self._textbox.connect_after('message-send', self._on_message_send)
 

@@ -32,6 +32,7 @@ from e3 import cache
 from e3.base import *
 import e3.base.Logger as Logger
 from e3.common import ConfigDir
+from e3.common import locations
 
 import logging
 log = logging.getLogger('papylib.Worker')
@@ -152,7 +153,7 @@ class Worker(e3.base.Worker, papyon.Client):
                 f.close()
             except Exception as e:
                 picfail = True
-                print e
+                log.error("Writing of content roaming picture failed: %s" % e)
             # update roaming stuff in papyon's session
             # changing display_name doesn't seem to update its value istantly, wtf?
             # however, other clients see this correctly, wow m3n
@@ -295,7 +296,7 @@ class Worker(e3.base.Worker, papyon.Client):
             filedata = f.read()
             f.close()
         except Exception as e:
-            print e
+            log.error("Reading of file %s failed: %s" % (tr.completepath, e))
 
         if not isinstance(filedata, str):
             filedata = "".join([chr(b) for b in filedata])
@@ -312,24 +313,27 @@ class Worker(e3.base.Worker, papyon.Client):
         self.session.add_event(Event.EVENT_FILETRANSFER_PROGRESS, tr)
 
     def papy_ft_completed(self, ftsession, data):
-        #print "data:", len(data.getvalue())
-        # TODO: save the file somewhere and kill the dicts
+        ''' save the file according to user prefs
+            or do nothing if we sent it '''
+        # TODO: kill the dicts (?)
         tr = self.filetransfers[ftsession]
         if tr.sender == 'Me':
             # we sent the file, do nothing pls.
             pass
         else:
-            sender = tr.sender
-            fname = tr.filename
-            # TODO: save somewhere else the data!
-            handle, path = tempfile.mkstemp(suffix=".temp", prefix='emesenefile')
+            download_path = self.session.config.get_or_set("download_folder", 
+                e3.common.locations.downloads())
+            if self.session.config.b_download_folder_per_account:
+                full_path = os.path.join(download_path, tr.sender, tr.filename)
+            else:
+                full_path = os.path.join(download_path, tr.filename)
             try:
-                f = open(path, 'wb')
+                f = open(full_path, 'wb')
                 f.write(data.getvalue())
                 f.close()
+                tr.completepath = full_path
             except Exception as e:
-                print e
-            os.close(handle)
+                log.error("Writing file %s failed: %s" % (full_path, e))
         #del self.rfiletransfers[tr]
 
         self.session.add_event(Event.EVENT_FILETRANSFER_COMPLETED, tr)
@@ -404,8 +408,7 @@ class Worker(e3.base.Worker, papyon.Client):
             # we don't care about users typing if no conversation is opened
             return
 
-        # TODO: finish in conversation gtkui
-        #self.session.add_event(Event.EVENT_USER_TYPING, cid, account)
+        self.session.add_event(Event.EVENT_USER_TYPING, cid, account)
 
     def _on_conversation_message_received(self, papycontact, papymessage, \
         pyconvevent):
@@ -438,7 +441,7 @@ class Worker(e3.base.Worker, papyon.Client):
 
         def download_ok(msnobj, em_path, download_failed_func):
             if msnobj._data is None:
-                log.warning("[papylib] downloaded msnobj is None")
+                log.warning("downloaded msnobj is None")
                 return
 
             mo_fr = msnobj._friendly.replace("\x00", "")
@@ -901,7 +904,7 @@ class Worker(e3.base.Worker, papyon.Client):
             avatar = f.read()
             f.close()
         except Exception as e:
-            print e
+            log.error("Loading of picture %s failed" % picture_name)
 
         if not isinstance(avatar, str):
             avatar = "".join([chr(b) for b in avatar])
@@ -1027,7 +1030,7 @@ class Worker(e3.base.Worker, papyon.Client):
                     d_custom_emoticon = f.read()
                     f.close()
                 except Exception as e:
-                    print e
+                    log.error("Loading of emoticon failed: %s" % e)
                 if not isinstance(d_custom_emoticon, str):
                     d_custom_emoticon = "".join([chr(b) for b in d_custom_emoticon])
 
