@@ -2,15 +2,9 @@
 
 #   This file is part of emesene.
 #
-<<<<<<< HEAD
-#    Emesene is free software; you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation; either version 2 of the License, or
-=======
 #    emesene is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation; either version 3 of the License, or
->>>>>>> 383a132f87a76c0c293ef1e5d17a6680195ba11e
 #    (at your option) any later version.
 #
 #    emesene is distributed in the hope that it will be useful,
