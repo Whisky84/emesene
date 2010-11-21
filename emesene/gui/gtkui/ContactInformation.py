@@ -307,7 +307,6 @@ class ChatWidget(gtk.VBox):
 
         for stat, timestamp, msg_text, nick, account in results:
             date_text = time.strftime('[%c]', time.gmtime(timestamp))
-
             contact = e3.Contact(account, nick=nick)
 
             is_me = self.session.contacts.me.account == account
@@ -326,4 +325,3 @@ class ChatWidget(gtk.VBox):
                         None, None, self.first)
 
             self.first = False
-

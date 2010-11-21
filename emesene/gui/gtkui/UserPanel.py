@@ -24,7 +24,7 @@ class UserPanel(gtk.VBox):
         self._enabled = True
 
         Avatar = extension.get_default('avatar')
-        
+
         self.avatar = Avatar(cellDimention=48)
 
         self.avatarBox = gtk.EventBox()
