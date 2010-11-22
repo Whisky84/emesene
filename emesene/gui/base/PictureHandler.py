@@ -37,6 +37,12 @@ class PictureHandler (object):
 
     def resize(self, new_size):
         '''Resizes to new_size the given avatar pix'''
+        if self.can_handle():
+            self._resize(new_size)
+    
+
+    def _resize(self, new_size):
+        '''This method actually resizes to new_size the given avatar pix'''
         raise NotImplementedError("Method not implemented")
 
 
