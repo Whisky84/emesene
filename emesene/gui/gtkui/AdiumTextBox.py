@@ -1,3 +1,21 @@
+# -*- coding: utf-8 -*-
+
+#    This file is part of emesene.
+#
+#    emesene is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    emesene is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with emesene; if not, write to the Free Software
+#    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+
 import os
 import gtk
 import logging
@@ -18,6 +36,11 @@ class OutputView(webkit.WebView):
     def __init__(self, theme, source, target, target_display, source_img,
             target_img):
         webkit.WebView.__init__(self)
+        # Trying to debug issue #232
+        # https://github.com/emesene/emesene/issues/#issue/232
+        webkit_settings = self.get_settings()
+        webkit_settings.set_property("enable-plugins", False)
+
         self.theme = theme
         self.last_incoming = None
         self.last_incoming_account = None
@@ -176,8 +199,6 @@ class OutputText(gtk.ScrolledWindow):
     def receive_message(self, formatter, contact, message, cedict, cedir, is_first):
         '''add a message to the widget'''
         msg = gui.Message.from_contact(contact, message.body, is_first, True, message.timestamp)
-        # WARNING: this is a hack to keep out config from backend libraries
-        message.style.size = self.config.i_font_size
         self.view.add_message(msg, message.style, cedict, cedir)
 
     def information(self, formatter, contact, message):
