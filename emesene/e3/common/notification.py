@@ -65,10 +65,10 @@ class Notification():
         self.last_online = None
 
     def _on_filetransfer_completed(self,args):
-        self.notifier("File transfer successful", "", 'notification-message-email', 'file-transf-completed')
+        self.notifier(_("File transfer successful"), "", 'notification-message-email', 'file-transf-completed')
 
     def _on_filetransfer_canceled(self,args):
-        self.notifier("File transfer canceled", "", 'notification-message-email', 'file-transf-canceled')
+        self.notifier(_("File transfer canceled"), "", 'notification-message-email', 'file-transf-canceled')
 
     def _on_filetransfer_invitation(self, arg1, arg2):
 
@@ -76,18 +76,37 @@ class Notification():
             return
 
         contact = self.session.contacts.get(arg1.sender.account)
-        self._notify(contact, contact.nick, "File transfer invitation")
+        self._notify(contact, contact.nick, _("File transfer invitation"))
         
     def _on_mail_received(self, message):
         ''' called when a new mail is received '''
-        self.notifier("New mail from %s" % (message.address), message._subject, 'notification-message-email','mail-received')
+        self.notifier(_("New mail from %s") % (message.address), message._subject, 'notification-message-email','mail-received')
+
+    def has_similar_conversation(self, cid, members):
+        '''
+        try to find a conversation with the given cid, if not search for a
+        conversation with the same members and return it
+
+        if not found return None
+        '''
+        cid = float(cid)
+
+        if cid in self.session.conversations:
+            return self.session.conversations[cid]
+
+        elif members is not None:
+            for (key, conversation) in self.session.conversations.iteritems():
+                if conversation.members == members:
+                    return conversation
 
     def _on_message(self, cid, account, msgobj, cedict={}):
         """
         This is called when a new message arrives to a user.
         """
+        conversation = self.has_similar_conversation(cid, account)
+
         if self.session.config.b_notify_receive_message and \
-            not(self.session.conversations[cid].get_parent().is_active()):
+           conversation.message_waiting:
             contact = self.session.contacts.get(account)            
             if msgobj.type == Message.TYPE_NUDGE:
                 # The message needs to be translated.
@@ -107,7 +126,7 @@ class Notification():
         if not contact:
             return
 
-        if contact.status == status.ONLINE:
+        if contact.status != status.OFFLINE and old_value == status.OFFLINE:
             if not self.notify_online:
                 # detects the first notification flood and enable the
                 # online notifications after it to prevent log in flood

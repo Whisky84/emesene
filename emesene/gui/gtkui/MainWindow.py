@@ -40,6 +40,7 @@ class MainWindow(gtk.VBox):
         '''class constructor'''
         gtk.VBox.__init__(self)
         self.session = session
+        self.__hotmail = Hotmail(self.session)
 
         UserPanel = extension.get_default('user panel')
         ContactList = extension.get_default('contact list')
@@ -106,8 +107,8 @@ class MainWindow(gtk.VBox):
     def _on_mail_count_changed(self,count):
         self.panel.mail.set_label("(%d)" % count)
 
-    def _on_mail_click(self, widget, data):	
-        Hotmail(self.session).openInBrowser()
+    def _on_mail_click(self, widget, data):
+        self.__hotmail.openInBrowser()
 
     def _on_show_userpanel_changed(self, value):
         '''callback called when config.b_show_userpanel changes'''
@@ -174,10 +175,18 @@ class MainWindow(gtk.VBox):
 
     def _on_contact_menu_selected(self, contact):
         '''callback for the contact-menu-selected signal'''
+        if contact.blocked:
+            self.contact_menu.set_blocked()
+        else:
+            self.contact_menu.set_unblocked()
         self.contact_menu.popup(None, None, None, 0, 0)
 
     def _on_group_menu_selected(self, group):
         '''callback for the group-menu-selected signal'''
+        if self.contact_list.is_favorite_group_selected():
+            self.group_menu.show_unset_favorite_item()
+        else:
+            self.group_menu.show_set_favorite_item()
         self.group_menu.popup(None, None, None, 0, 0)
 
     def _on_contact_attr_changed(self, account, change_type, old_value,
@@ -235,9 +244,13 @@ class MainWindow(gtk.VBox):
             self.entry.show()
             self.entry.grab_focus()
             self.contact_list.is_searching = True
+            # Using private member because i don't want to update config
+            self.contact_list._show_empty_groups = True
+            self.contact_list.refilter()
         else:
             self.entry.set_text('')
             self.entry.hide()
             self.contact_list.is_searching = False
+            self.contact_list.show_empty_groups = self.session.config.b_show_empty_groups
             self.contact_list.un_expand_groups()
 

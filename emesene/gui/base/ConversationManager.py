@@ -49,8 +49,13 @@ class ConversationManager(object):
             #    self._on_contact_attr_changed)
             self.session.signals.p2p_finished.subscribe(
                 self._on_p2p_finished)
-         
-        self.session.conversations = self.conversations
+
+        conversation_tabs = self.session.config.get_or_set(
+                'b_conversation_tabs', True)
+
+        if self.session.conversations is None or conversation_tabs:
+            self.session.conversations = {}
+
     def add_new_conversation(self, session, cid, members):
         """
         create and append a new conversation
@@ -60,13 +65,15 @@ class ConversationManager(object):
     def _on_message(self, cid, account, message, cedict=None):
         '''called when a message is received'''
         conversation = self.conversations.get(float(cid), None)
+        conversation_tabs = self.session.config.get_or_set(
+                'b_conversation_tabs', True)
 
-        if conversation is None:
+        if conversation is None and conversation_tabs:
             conversation = self.new_conversation(cid, [account])
 
-        conversation.on_receive_message(message, account, cedict)
-
-        self.set_message_waiting(conversation, True)
+        if conversation is not None:
+            conversation.on_receive_message(message, account, cedict)
+            self.set_message_waiting(conversation, True)
 
     def _on_user_typing(self, cid, account, *args):
         """
@@ -93,18 +100,12 @@ class ConversationManager(object):
         """
         raise NotImplementedError("Method not implemented")
 
-    def _on_message_send_failed(self, cid, message):
-        '''called when a message is received'''
+    def _on_message_send_failed(self, cid, error):
+        '''called when a message failes to be sent'''
         conversation = self.conversations.get(float(cid), None)
 
         if conversation is not None:
-            error = conversation.formatter.format_error(
-                'message couldn\'t be sent: ')
-            conversation.output.append(error, {},
-                self.session.config.b_allow_auto_scroll)
-            conversation.output.append(
-                self.format_from_message(message),
-                {}, self.session.config.b_allow_auto_scroll)
+            conversation.on_send_message_failed(error)
         else:
             log.debug('conversation %s not found' % cid)
 
@@ -178,9 +179,12 @@ class ConversationManager(object):
 
             if old_cid in self.conversations:
                 del self.conversations[old_cid]
+            if old_cid in self.session.conversations:
+                del self.session.conversations[old_cid]
 
             conversation.cid = cid
             self.conversations[cid] = conversation
+            self.session.conversations[cid] = conversation
             return conversation
 
         return None
@@ -197,6 +201,7 @@ class ConversationManager(object):
         if conversation is None:
             conversation = self.add_new_conversation(self.session, cid, members)
             self.conversations[cid] = conversation
+            self.session.conversations[cid] = conversation
 
         return conversation
 

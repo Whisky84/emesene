@@ -117,7 +117,6 @@ class LoginBase(gtk.Alignment):
         vbox_remember.pack_start(gtk.Label())
 
         self.b_connect = gtk.Button(stock=gtk.STOCK_CONNECT)
-        self.b_connect.connect('clicked', self._on_connect_clicked)
         self.b_connect.set_sensitive(False)
 
         self.b_cancel = gtk.Button(stock=gtk.STOCK_CANCEL)
@@ -274,6 +273,8 @@ class Login(LoginBase):
         self.status = self.config.get_or_set('d_status',{})
         self.accounts = self.config.d_accounts
 
+        self.b_connect.connect('clicked', self._on_connect_clicked)
+
         self._reload_account_list()
         self.__combo_session_list=[]
 
@@ -391,7 +392,7 @@ class Login(LoginBase):
         do all the stuffs needed to connect
         '''
         self.nicebar.empty_queue()
-        user = self.cmb_account.get_active_text().strip()
+        user = self.cmb_account.get_active_text().strip().lower()
         password = self.txt_password.get_text()
         account = e3.Account(user, password, self.btn_status.status,
                 self.server_host)

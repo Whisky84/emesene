@@ -18,24 +18,35 @@
 #
 #    Module written by Andrea Stagi <stagi.andrea(at)gmail.com>
 
-class synch(object):
+class Synch(object):
 
         def __init__(self):
             pass
 
-        def start_synch(self, session, synch_function=None):
+        def initialize(self, session, end_callback, prog_callback, action_callback):
             self._session = session
+            self._end_callback = end_callback
+            self._prog_callback = prog_callback
+            self._action_callback = action_callback
+            self.__src_db_path = ""
+            self.__dest_db_path = ""
+            self.__src_db_path_copy = ""
 
-        def set_source_path(self,path):
-            self.__srcpath=path
+        def set_user(self, user_account):
+            pass
 
-        def set_destination_path(self,path):
-            self.__destpath=path
+        def exists_source(self):
+            return False
 
-        @property
-        def dest_path(self):
-            return self.__destpath
+        def is_clean(self):
+            return True
 
-        @property
-        def src_path(self):
-            return self.__srcpath
+        def clean(self):
+            pass
+
+        def __create_safe_copy(self):
+            pass
+
+        def start_synch(self):
+            pass
+

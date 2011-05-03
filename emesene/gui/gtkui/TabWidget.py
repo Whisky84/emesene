@@ -16,6 +16,7 @@
 #    along with emesene; if not, write to the Free Software
 #    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
+import os
 import gtk
 import gobject
 
@@ -34,6 +35,9 @@ try:
         CLOSE_ON_LEFT = 1
 except:
     pass
+
+if os.name == 'mac':
+    CLOSE_ON_LEFT = 1
 
 class TabWidget(gtk.HBox):
     '''a widget that is placed on the tab on a notebook'''

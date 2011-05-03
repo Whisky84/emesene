@@ -28,6 +28,21 @@ import Desktop
 import logging
 log = logging.getLogger('gui.base.Handler')
 
+EMESENE_LICENSE = '''    emesene is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 3 of the License, or
+    (at your option) any later version.
+
+    emesene is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with emesene; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+'''
+
 class MenuHandler(object):
     '''this handler contains all the handlers needed to handle all the
     menu items
@@ -120,6 +135,9 @@ class OptionsHandler(object):
     def on_preferences_selected(self):
         '''called when the preference button is selected'''
         instance = extension.get_and_instantiate('preferences', self.session)
+        if self.session is not instance.session:
+            extension.delete_instance('preferences')
+            instance = extension.get_and_instantiate('preferences', self.session)
         instance.show()
         instance.present()
 
@@ -140,9 +158,17 @@ class HelpHandler(object):
 
     def on_about_selected(self):
         '''called when the about item is selected'''
-        self.dialog.about_dialog('emesene', '2.0', 'marianoguerra & c10ud',
-            _('A simple yet powerful MSN & Gtalk client'), 'GPL v3',
-            'http://www.emesene.org', ['marianoguerra', 'boyska', 'C10uD','Cando'], '',
+        self.dialog.about_dialog('emesene', '2.11.5-devel', 'marianoguerra & c10ud',
+            _('A simple yet powerful instant messaging client'), EMESENE_LICENSE,
+            'http://www.emesene.org', 
+            [ 'Riccardo (c10ud) <c10ud.dev@gmail.com>',
+              'Mariano Guerra <luismarianoguerra@gmail.com>',
+              'arielj <arieljuod@gmail.com>',
+              'Stefano Candori <stefanocandori@gmail.com>',
+              '4ndreaSt4gi <stagi.andrea@gmail.com>',
+              'Davide Lo Re <boyska@gmail.com>',
+              'dequis <dx@dxzone.com.ar>',
+              'Sven (Sbte) <svenb.linux@gmail.com>' ], _('translator-credits'),
             gui.theme.logo)
 
     def on_website_selected(self):
@@ -166,9 +192,22 @@ class ContactHandler(object):
         self.dialog = dialog
         self.contact_list = contact_list
 
+    def get_contact_groups(self):
+        contact = self.contact_list.get_contact_selected()
+        if contact is not None:
+            return contact.groups
+        else:
+            return []
+
+    def get_all_groups(self):
+        return self.session.groups
+
+    def is_by_group_view(self):
+        return self.contact_list.order_by_group
+
     def on_add_contact_selected(self):
         '''called when add contact is selected'''
-        def add_cb(response, account, group):
+        def add_cb(response, account=None, group=None):
             '''callback to the add_dialog method, add the user and add him
             to the defined group'''
             if response == gui.stock.ADD:
@@ -250,6 +289,32 @@ class ContactHandler(object):
         else:
             self.dialog.error(_('No contact selected'))
 
+    def on_copy_to_group_selected(self, group):
+        contact = self.contact_list.get_contact_selected()
+
+        if contact:
+            self.session.add_to_group(contact.account, group.identifier)
+        else:
+            self.dialog.error(_('No contact selected'))
+
+    def on_move_to_group_selected(self, group_dst):
+        contact = self.contact_list.get_contact_selected()
+        group_src = self.contact_list.get_contact_selected_group()
+
+        if contact and group_src and group_dst:
+            self.session.move_to_group(contact.account, 
+                                    group_src.identifier, group_dst.identifier)
+        else:
+            self.dialog.error(_('No contact selected'))
+
+    def on_remove_from_group_selected(self, group):
+        contact = self.contact_list.get_contact_selected()
+
+        if contact:
+            self.session.remove_from_group(contact.account, group.identifier)
+        else:
+            self.dialog.error(_('No contact selected'))
+
 class GroupHandler(object):
     '''this handler contains all the handlers needed to handle the group
     menu items
@@ -260,6 +325,9 @@ class GroupHandler(object):
         self.session = session
         self.dialog = dialog
         self.contact_list = contact_list
+
+    def is_by_group_view(self):
+        return self.contact_list.order_by_group
 
     def on_add_group_selected(self):
         '''called when add group is selected'''
@@ -310,6 +378,34 @@ class GroupHandler(object):
         else:
             self.dialog.error(_('No group selected'))
 
+    def on_favorite_group_selected(self):
+        ''' called when set as favorite is selected '''
+        group = self.contact_list.get_group_selected()
+
+        if group:
+            # reset old group's weight
+            old_fav_group_id = self.session.config.favorite_group_id
+            if old_fav_group_id is not None:
+                self.session.config.d_weights[old_fav_group_id] = 0
+            # increase new group's weight
+            self.session.config.favorite_group_id = group.identifier
+            self.session.config.d_weights[group.identifier] = 1
+            self.contact_list.fill()
+        else:
+            self.dialog.error(_('No group selected'))
+    
+    def on_unset_favorite_group_selected(self):
+        ''' called when unset as favorite is selected in a favorite group '''
+        group = self.contact_list.get_group_selected()
+        
+        if group:
+            # reset group weight
+            self.session.config.d_weights[group.identifier] = 0
+            self.session.config.favorite_group_id = None
+            self.contact_list.fill()
+        else:
+            self.dialog.error(_('No group selected'))
+
 class MyAccountHandler(object):
     '''this handler contains all the handlers needed to handle the my account
     menu items
@@ -352,6 +448,18 @@ class ConversationToolbarHandler(object):
         self.dialog = dialog
         self.conversation = conversation
         self.theme = theme
+
+    def session_call_supported(self):
+        '''check if current session supports calls '''
+        user = self.session.account.account
+        current_service = self.session.config.d_user_service.get(user, 'msn')
+        return current_service in ['msn']
+
+    def session_filetransfer_supported(self):
+        '''check if current session supports file transfers '''
+        user = self.session.account.account
+        current_service = self.session.config.d_user_service.get(user, 'msn')
+        return current_service in ['msn']
 
     def on_font_selected(self):
         '''called when the Font button is selected'''
@@ -483,8 +591,9 @@ class CallHandler(object):
 
     def accept(self):
         ''' accepts a call '''
-        self.call.state = e3.base.Call.ESTABLISHED
-        self.session.accept_call(self.call)
+        if self.call.state != e3.base.Call.ESTABLISHED:
+            self.call.state = e3.base.Call.ESTABLISHED
+            self.session.accept_call(self.call)
 
     def accepted(self):
         ''' when a call is accepted by the other party'''

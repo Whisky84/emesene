@@ -25,36 +25,13 @@ import pango
 import cairo
 import gobject
 
+import gui
 from gui.base import Plus
+import ContactListParser
 import extension
-import Parser
 
 import logging
 log = logging.getLogger('gtkui.Renderers')
-
-def replace_markup(markup, arg=None):
-    '''replace the tags defined in gui.base.ContactList'''
-    markup = markup.replace("[$nl]", "\n")
-
-    markup = markup.replace("[$small]", "<small>")
-    markup = markup.replace("[$/small]", "</small>")
-
-    if markup.count("[$COLOR=") > 0:
-        hexcolor = color = markup.split("[$COLOR=")[1].split("]")[0]
-        if color.count("#") == 0:
-            hexcolor = "#" + color
-
-        markup = markup.replace("[$COLOR=" + color + "]", \
-                "<span foreground='" + hexcolor + "'>")
-        markup = markup.replace("[$/COLOR]", "</span>")
-
-    markup = markup.replace("[$b]", "<b>")
-    markup = markup.replace("[$/b]", "</b>")
-
-    markup = markup.replace("[$i]", "<i>")
-    markup = markup.replace("[$/i]", "</i>")
-
-    return markup
 
 class CellRendererFunction(gtk.GenericCellRenderer):
     '''
@@ -166,165 +143,33 @@ class CellRendererFunction(gtk.GenericCellRenderer):
         self._cached_layout = {}
         widget.queue_resize()
 
-################################################################################
-# emesene1 parsers rock the streets, here they're instanciated and used
-# if you could fix the emesene2 one, you would be very welcome.
-################################################################################
-
-bigparser = Parser.UnifiedParser()
-mohrtutchy_plus_parser = Plus.MsnPlusMarkupMohrtutchy()
 plus_or_noplus = 1 # 1 means plus, 0 means noplus
+# We still use the Plus parser from emesene 1
+plus_parser = Plus.MsnPlusMarkupMohrtutchy()
 
-def plus_parse(obj, parser, filterdata):
+def plus_text_parse(item):
+    '''parse plus in the contact list'''
     global plus_or_noplus
     # get a plain string with objects
-    format, objects = filterdata.serialize(filterdata.list)
-
-    if parser and parser.tags != Parser.TAGS_NONE:
-        # we have markup
-        mohrtutchy_plus_parser.isHtml = False
-        if parser.tags == Parser.TAGS_PANGO and plus_or_noplus:
-            # replace msn plus markup with pango
-            format = mohrtutchy_plus_parser.replaceMarkup(format)
-        else:
-            # remove all msn plus markup
-            format = mohrtutchy_plus_parser.removeMarkup(format)
-
-        # put back the objects
-        filterdata.list = filterdata.deserialize(format, objects)
+    plus_parser.isHtml = False
+    if plus_or_noplus:
+        item = plus_parser.replaceMarkup(item)
     else:
-        format = mohrtutchy_plus_parser.removeMarkup(format)
-        filterdata.list = filterdata.deserialize(format, objects)
+        item = plus_parser.removeMarkup(item)
+    return item
 
-bigparser.connect('filter', plus_parse)
-
-def msnplus_to_list(txt, do_parse_emotes=True):
-    '''parte text to a DictObj and return a list of strings and
-    gtk.gdk.Pixbufs'''
-
-    ########################################
-    # Mohrtutchy hax, it works (not sure how)
-    parser = bigparser.getParser(Parser.unescape(txt), Parser.PangoDataType)
-    parsed_stuff = parser.get(smileys=True)
-
-    list_stuff = []
-    for item in parsed_stuff:
-        if type(item) is Parser.Smiley:
-            list_stuff.append(item.pixbuf)
-        else:
-            list_stuff.append(replace_markup(item))
-    return list_stuff
-
-    ########################################
-    # boyska's implementation, quite incomplete.
-    dct = Plus.msnplus(txt, do_parse_emotes)
-
-    if not do_parse_emotes:
-        return dct.to_xml()
-
-    items = flatten_tree(dct, [], [])
-
-    temp = []
-    accum = []
-    for item in items:
-        if type(item) in (str, unicode):
-            temp.append(item)
-        else:
-            text = replace_markup("".join(temp))
-            accum.append(text)
-            accum.append(item)
-            temp = []
-
-    accum.append(replace_markup("".join(temp)))
-
-    return accum
+def msnplus_to_list(text):
+    '''parse text and return a list of strings and gtk.gdk.Pixbufs'''
+    parser = ContactListParser.ContactListParser()
+    text = plus_text_parse(text)
+    text = parser.replace_markup(text)
+    text_list = parser.replace_emoticons(text)
+    return text_list
 
 def msnplus_to_plain_text(txt):
     ''' from a nasty string, returns a nice plain text string without
     bells and whistles, just text '''
-    return bigparser.getParser(txt).get(escaped=False)
-
-def flatten_tree(dct, accum, parents):
-    '''convert the tree of markup into a list of string that contain pango
-    markup and pixbufs, if an img tag is found all the parent tags should be
-    closed before the pixbuf and reopened after.
-    example:
-        <b>hi! :D lol</b>
-        should be
-        ["<b>hi! </b>", pixbuf, "<b> lol</b>"]
-    '''
-    def open_tag(tag):
-        attrs = " ".join("%s=\"%s\"" % (attr, value) for attr, value in
-                tag.iteritems() if attr not in ['tag', 'childs'] and value)
-
-        if attrs:
-            return '<%s %s>' % (tag.tag, attrs)
-        else:
-            return '<%s>' % (tag.tag, )
-
-    if dct.tag:
-        previous = list()
-        i = len(accum)-1
-
-        while i>=0 and type(accum[i]) != gtk.gdk.Pixbuf:
-            previous.append(accum[i])
-            i -= 1
-
-        if dct.tag == "img":
-            closed = ""
-            opened = ""
-            tags = list()
-            index = 0
-
-            for prev in previous:
-                pos = prev.find("[$")
-
-                while pos != -1:
-                    index = pos+2
-                    found = prev[index]
-
-                    if found == "b":
-                        tags.append("b")
-                    elif found == "i":
-                        tags.append("i")
-                    elif found == "s":
-                        tags.append("small")
-                    elif found == "/":
-                        if len(tags) > 0:
-                            tags.pop()
-
-                    prev = prev[index+1:]
-                    pos = prev.find("[$")
-
-            while len(tags) > 0:
-                tag = tags.pop()
-                closed = closed+"[$/"+tag+"]"
-                opened = "[$"+tag+"]"+opened
-
-            closed = closed+"".join("</%s>" % (parent.tag, ) for parent in \
-                parents[::-1] if parent)
-
-            opened = "".join(open_tag(parent) for parent in \
-                parents if parent)+opened
-
-            accum += [closed, gtk.gdk.pixbuf_new_from_file(dct.src), opened]
-
-            return accum
-        else:
-            accum += [open_tag(dct)]
-
-    for child in dct.childs:
-        if type(child) in (str, unicode):
-            accum += [child]
-        elif dct.tag:
-            flatten_tree(child, accum, parents + [dct])
-        else:
-            flatten_tree(child, accum, parents)
-
-    if dct.tag:
-        accum += ['</%s>' % dct.tag]
-
-    return accum
+    return plus_parser.removeMarkup(txt)
 
 class CellRendererPlus(CellRendererFunction):
     '''Nick renderer that parse the MSN+ markup, showing colors, gradients and
@@ -574,7 +419,7 @@ class SmileyLayout(pango.Layout):
             self.set_attributes(self._attrlist)
 
     def _update_layout(self):
-        if self._width >= 0 and self._ellipsize == False: # if true, then wrap
+        if self._width >= 0 and not self._ellipsize: # if true, then wrap
             pango.Layout.set_width(self, self._width)
         else:
             pango.Layout.set_width(self, -1)

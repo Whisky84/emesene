@@ -16,9 +16,6 @@
 #    along with emesene; if not, write to the Free Software
 #    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-import os
-import sys
-
 import MessageFormatter
 
 def add_style_to_message(text, stl, escape=True):
@@ -58,21 +55,31 @@ def add_style_to_message(text, stl, escape=True):
 
     return style_start + text + style_end
 
-def we_are_frozen():
-    """Returns whether we are frozen via py2exe.
-    This will affect how we find out where we are located."""
+class PercentDone(object):
 
-    return hasattr(sys, "frozen")
+        def __init__(self, total):
+                self.__total = total
+                self.__current = 0
 
-def project_path():
-    """ This will get us the program's directory,
-    even if we are frozen using py2exe"""
+        @property
+        def current(self):
+                return self.__current
 
-    if we_are_frozen():
-        return os.path.abspath(os.path.dirname(unicode(sys.executable, sys.getfilesystemencoding())))
+        @property
+        def total(self):
+                return self.__total
 
+        @total.setter
+        def total(self, total):
+                self.__total = total
 
-    this_module_path = os.path.dirname(unicode(__file__, sys.getfilesystemencoding()))
-    proj_path = os.path.join(this_module_path, "..", "..")
+        def notify(self, q):
+                aux = (int)((q/self.__total) * 100.0)
+                if aux == self.__current:
+                    changed = False
+                else:
+                    changed = True
 
-    return os.path.abspath(proj_path)
+                self.__current = aux
+                return changed
+

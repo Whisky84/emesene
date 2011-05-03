@@ -17,6 +17,7 @@
 #    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 import os
+import shutil
 import time
 import Queue
 import threading
@@ -153,12 +154,13 @@ class Logger(object):
     CREATE_FACT_EVENT = '''
         CREATE TABLE fact_event
         (
-          id_time INTEGER PRIMARY KEY,
+          id_time INTEGER,
           id_event INTEGER,
           id_src_info INTEGER,
           id_dest_info INTEGER,
           id_src_acc INTEGER,
           id_dest_acc INTEGER,
+          cid INTEGER,
 
           status INTEGER,
           payload TEXT,
@@ -204,8 +206,8 @@ class Logger(object):
 
     INSERT_FACT_EVENT = '''
         INSERT INTO fact_event(id_time, id_event, id_src_info, id_dest_info,
-            id_src_acc, id_dest_acc, status, payload, tmstp)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?);
+            id_src_acc, id_dest_acc, status, payload, tmstp, cid)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
     '''
 
     INSERT_LAST_ACCOUNT = '''
@@ -249,7 +251,7 @@ class Logger(object):
     SELECT_ACCOUNT_EVENT = '''
         SELECT status, tmstp, payload from fact_event
         WHERE id_event=? and id_src_acc=?
-        ORDER BY tmstp LIMIT ?;
+        ORDER BY tmstp DESC LIMIT ?;
     '''
 
     SELECT_ACCOUNT_BY_GROUP = '''
@@ -269,7 +271,7 @@ class Logger(object):
         FROM fact_event f
         WHERE f.id_event=? and f.id_src_acc=? and
             id_dest_acc=?
-        ORDER BY tmstp LIMIT ?;
+        ORDER BY tmstp DESC LIMIT ?;
     '''
 
     SELECT_CHATS = '''
@@ -279,7 +281,7 @@ class Logger(object):
             ((f.id_src_acc=? and id_dest_acc=?) or
             (f.id_dest_acc=? and id_src_acc=?)) and
             f.id_src_info = i.id_info and f.id_src_acc = a.id_account
-        ORDER BY tmstp LIMIT ?;
+        ORDER BY tmstp DESC LIMIT ?;
     '''
 
     SELECT_CHATS_BETWEEN = '''
@@ -287,10 +289,27 @@ class Logger(object):
         FROM fact_event f, d_info i, d_account a
         WHERE f.id_event=? and
             ((f.id_src_acc=? and id_dest_acc=?) or
-            (f.id_dest_acc=? and id_src_acc=?)) and
+            (f.id_dest_acc=? and id_src_acc=?)  or
+            (f.id_src_acc<>? and f.cid in 
+                ( SELECT f.cid FROM fact_event f 
+                  WHERE f.id_event=?  and  ((f.id_src_acc=? and id_dest_acc=?) 
+                  or  (f.id_dest_acc=? and id_src_acc=?)) )
+            )) and
             f.id_src_info = i.id_info and
             f.tmstp >= ? and f.tmstp <= ? and f.id_src_acc = a.id_account
-        ORDER BY tmstp LIMIT ?;
+        ORDER BY tmstp DESC LIMIT ?;
+    '''
+
+    SELECT_NEW_FIELDS = '''
+        SELECT cid FROM fact_event;
+    '''
+
+    DROP_FACT_EVENT = '''
+        DROP TABLE fact_event;
+    '''
+
+    DROP_D_TIME = '''
+        DROP TABLE d_time;
     '''
 
     def __init__(self, path, db_name="base.db"):
@@ -303,6 +322,16 @@ class Logger(object):
         self.accounts = {}
 
         full_path = os.path.join(path, db_name)
+
+        if os.path.exists(full_path + "copy"):
+            shutil.copy (full_path + "copy", full_path)
+
+        self.connection = sqlite.connect(full_path)
+        self.cursor = self.connection.cursor()
+
+        if self.__need_clean():
+            self.__clean()
+
         self.connection = sqlite.connect(full_path)
         self.cursor = self.connection.cursor()
 
@@ -319,12 +348,12 @@ class Logger(object):
     def _create(self):
         '''create the database'''
         self.execute(Logger.CREATE_D_TIME)
+        self.execute(Logger.CREATE_FACT_EVENT)
         self.execute(Logger.CREATE_D_INFO)
         self.execute(Logger.CREATE_D_EVENT)
         self.execute(Logger.CREATE_D_ACCOUNT)
         self.execute(Logger.CREATE_GROUP)
         self.execute(Logger.CREATE_ACCOUNT_BY_GROUP)
-        self.execute(Logger.CREATE_FACT_EVENT)
         self.execute(Logger.CREATE_LAST_ACCOUNT)
 
         for event in Logger.EVENTS:
@@ -468,11 +497,11 @@ class Logger(object):
         return id_event
 
     def insert_fact_event(self, id_time, id_event, id_src_info, id_dest_info,
-            id_src_acc, id_dest_acc, status, payload, timestamp):
+            id_src_acc, id_dest_acc, status, payload, timestamp, cid):
         '''insert a row into the fact_event table, returns the id'''
         self.execute(Logger.INSERT_FACT_EVENT,
             (id_time, id_event, id_src_info, id_dest_info, id_src_acc,
-                id_dest_acc, status, unicode(payload), timestamp))
+                id_dest_acc, status, unicode(payload), timestamp, cid))
 
         self._stat()
 
@@ -534,6 +563,13 @@ class Logger(object):
             self._count = 0
 
         self._count += 1
+        
+    def _fetch_sorted(self):
+        '''puts list from the query in the right order'''
+        query_list = self.cursor.fetchall()
+        query_list.reverse()
+
+        return query_list
 
     def execute(self, query, args=()):
         '''execute the query with optional args'''
@@ -541,7 +577,8 @@ class Logger(object):
 
     # utility methods
 
-    def add_event(self, event, status, payload, src, dest=None, ext_time=None):
+    def add_event(self, event, status, payload, src, dest=None, ext_time=None,
+            id_time=None, cid = 0):
         '''add an event on the fact and the dimensiones using the actual time'''
 
         id_event = self.insert_event(event)
@@ -555,17 +592,19 @@ class Logger(object):
             id_dest_info = None
             id_dest_acc = None
 
-        if ext_time:
-            timestamp = ext_time
-            (year, month, day, hour, minute, seconds, wday, yday, tm_isdst) = time.gmtime(ext_time)
-            id_time = self.insert_time(year, month, day, wday, hour, minute, seconds)
-        else: 
-            id_time = self.insert_time_now()
-            timestamp = time.time()
+        if id_time is None:
+            if ext_time:
+                (year, month, day, hour, minute, seconds, wday, yday, tm_isdst) = time.gmtime(ext_time)
+                id_time = self.insert_time(year, month, day, wday, hour, minute, seconds)
+            else:
+                id_time = self.insert_time_now()
+
+        timestamp = ext_time if ext_time else time.time()
 
         self.insert_fact_event(id_time, id_event, id_src_info, id_dest_info,
-            id_src_acc, id_dest_acc, status, payload, timestamp)
+            id_src_acc, id_dest_acc, status, payload, timestamp, cid)
         self._stat()
+        return id_time
 
     def close(self):
         '''call this method when you are closing the app'''
@@ -589,7 +628,7 @@ class Logger(object):
 
         self.execute(Logger.SELECT_ACCOUNT_EVENT, (id_event, id_account, limit))
 
-        return self.cursor.fetchall()
+        return self._fetch_sorted()
 
     def get_nicks(self, account, limit):
         '''return the last # nicks from account, where # is the limit value'''
@@ -624,7 +663,7 @@ class Logger(object):
         self.execute(Logger.SELECT_SENT_MESSAGES, (id_event, id_src, id_dest,
             limit))
 
-        return self.cursor.fetchall()
+        return self._fetch_sorted()
 
     def get_chats(self, src, dest, limit):
         '''return the last # sent from src to dest or from dest to src ,
@@ -641,7 +680,7 @@ class Logger(object):
         self.execute(Logger.SELECT_CHATS, (id_event, id_src, id_dest, id_src,
             id_dest, limit))
 
-        return self.cursor.fetchall()
+        return self._fetch_sorted()
 
     def get_chats_between(self, src, dest, from_t, to_t, limit):
         '''return the last # sent from src to dest or from dest to src ,
@@ -656,9 +695,9 @@ class Logger(object):
         id_dest = self.accounts[dest].id_account
 
         self.execute(Logger.SELECT_CHATS_BETWEEN, (id_event, id_src, id_dest, id_src,
-            id_dest, from_t, to_t, limit))
+            id_dest, id_dest, id_event, id_src, id_dest, id_src, id_dest, from_t, to_t, limit))
 
-        return self.cursor.fetchall()
+        return self._fetch_sorted()
 
     def add_groups(self, groups):
         '''add all groups to the database'''
@@ -692,6 +731,20 @@ class Logger(object):
         for acc in removed:
             account = self.accounts[acc]
             self.update_account(account.id, False)
+
+    def __clean(self):
+        try:
+            self.execute(Logger.DROP_FACT_EVENT)
+            self.execute(Logger.DROP_D_TIME)
+        except sqlite.OperationalError:
+            pass
+
+    def __need_clean(self):
+        try:
+            self.execute(Logger.SELECT_NEW_FIELDS)
+            return False
+        except sqlite.OperationalError:
+            return True
 
     def add_contact_by_group(self, accounts, groups):
         '''add all the contacts, all the groups and the relations, also
@@ -772,10 +825,21 @@ class LoggerProcess(threading.Thread):
     def _process(self, data):
         '''process the received data'''
         action, args = data
+        cid = 0
 
         if action == 'log':
-            event, status, payload, src, dest, new_time = args
-            self.logger.add_event(event, status, payload, src, dest, new_time)
+            try:
+                event, status, payload, src, dest, new_time, cid = args
+            except:
+                event, status, payload, src, dest, new_time = args
+            self.logger.add_event(event, status, payload, src, dest, new_time, cid = cid)
+        elif action == 'logs':
+            id_time = None
+
+            for event, status, payload, src, dest, cid in args:
+                id_time = self.logger.add_event(event, status, payload, src,
+                        dest, None, id_time, cid = cid)
+
         elif action == 'quit':
             return True
         elif action in self.actions:
@@ -793,6 +857,11 @@ class LoggerProcess(threading.Thread):
             log.error('invalid action %s on LoggerProcess' % (action,))
 
         return False
+
+
+    @property
+    def input_size(self):
+        return self.input.qsize()
 
     def check(self, sync=False):
         '''call this method from the main thread if you dont want to have
@@ -815,9 +884,13 @@ class LoggerProcess(threading.Thread):
 
         return True
 
-    def log(self, event, status, payload, src, dest=None, new_time=None):
+    def log(self, event, status, payload, src, dest = None, new_time = None, cid = None):
         '''add an event to the log database'''
-        self.input.put(('log', (event, status, payload, src, dest, new_time)))
+        self.input.put(('log', (event, status, payload, src, dest, new_time, cid)))
+
+    def logs(self, logs):
+        '''add a group of events to the log database with the same time_od'''
+        self.input.put(('logs', logs))
 
     def quit(self):
         '''stop the logger thread, and close the logger'''
@@ -887,7 +960,7 @@ def save_logs_as_txt(results, handle):
         date_text = time.strftime('[%c]', time.gmtime(timestamp))
         handle.write("%s %s: %s\n" % (date_text, nick, message))
 
-def log_message(session, members, message, sent, error=False):
+def log_message(session, members, message, sent, error=False, cid = None):
     '''log a message, session is an e3.Session object, members is a list of
     members only used if sent is True, sent is True if we sent the message,
     False if we received the message. error is True if the message send
@@ -909,15 +982,32 @@ def log_message(session, members, message, sent, error=False):
         if message.type == e3.Message.TYPE_NUDGE:
             message.body = _("you just sent a nudge!")
 
-        for dst_account in members:
-            dst = session.contacts.get(dst_account)
+        logs = []
+
+        if len(members) == 1:
+            member = members[0]
+            dst = session.contacts.get(members[0])
 
             if dst is None:
-                dst = e3.Contact(dst_account)
+                dst = e3.Contact(members[0])
 
             dest = e3.Logger.Account.from_contact(dst)
 
-            session.logger.log(event, status, message.body, src, dest)
+            logs.append((event, status, message.body, src, dest, cid))
+
+            session.logger.logs(logs)
+        else:
+
+            for dst_account in members:
+                dst = session.contacts.get(dst_account)
+
+                if dst is None:
+                    dst = e3.Contact(dst_account)
+
+                dest = e3.Logger.Account.from_contact(dst)
+                logs.append((event, status, message.body, src, dest, cid))
+
+            session.logger.logs(logs)
     else:
         dest = e3.Logger.Account.from_contact(session.contacts.me)
         contact = session.contacts.get(message.account)
@@ -934,5 +1024,5 @@ def log_message(session, members, message, sent, error=False):
         if message.type == e3.Message.TYPE_NUDGE:
             message.body = _("%s just sent you a nudge!" % display_name)
 
-        session.logger.log(event, status, message.body, src, dest)
+        session.logger.log(event, status, message.body, src, dest, cid = cid)
 

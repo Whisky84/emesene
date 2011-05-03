@@ -22,8 +22,7 @@ import e3
 class ContactList(object):
     '''an abstract class that defines the api that the contact list should
     have'''
-    NICK_TPL = \
-        '[$DISPLAY_NAME][$NL][$small][$ACCOUNT][$/small][$NL][$small][$BLOCKED] ([$STATUS]) - [$MESSAGE][$/small]'
+    NICK_TPL = '[$DISPLAY_NAME][$NL][$small][C=c10ud][$MESSAGE][/C][$/small]'
 
     GROUP_TPL = '[$b][$NAME] ([$ONLINE_COUNT]/[$TOTAL_COUNT])[$/b]'
 
@@ -91,7 +90,7 @@ class ContactList(object):
         # [$s] [$/s] -> small
         # [$b] [$/b]
         # [$i] [$/i]
-        self.nick_template = self.session.config.get_or_set('nick_template',
+        self.nick_template = self.session.config.get_or_set('nick_template_clist',
             ContactList.NICK_TPL)
 
         # valid values:
@@ -390,13 +389,19 @@ class ContactList(object):
         contacts = self.contacts.get_contacts(group.contacts)
         (online, total) = self.contacts.get_online_total_count(contacts)
         template = self.group_template
+        maxtotal = len(self.contacts.contacts)
 
-        if group == self.offline_group or group == self.online_group:
+        if self.order_by_status:
             template = template.replace('[$ONLINE_COUNT]', str(total))
+            template = template.replace('[$TOTAL_COUNT]', str(maxtotal))
         else:
-            template = template.replace('[$ONLINE_COUNT]', str(online))
+            if group == self.offline_group:
+                template = template.replace('[$ONLINE_COUNT]', str(total))
+                template = template.replace('[$TOTAL_COUNT]', str(maxtotal))
+            else:
+                template = template.replace('[$ONLINE_COUNT]', str(online))
+                template = template.replace('[$TOTAL_COUNT]', str(total))
 
-        template = template.replace('[$TOTAL_COUNT]', str(total))
         template = template.replace('[$NAME]', self.escape_tags(escaped_name))
 
         return template
@@ -420,6 +425,11 @@ class ContactList(object):
 
     def get_contact_selected(self):
         '''return a contact object if there is a group selected, None otherwise
+        '''
+        raise NotImplementedError()
+
+    def get_contact_selected_group(self):
+        '''return a group object for the selected contact, None otherwise
         '''
         raise NotImplementedError()
 

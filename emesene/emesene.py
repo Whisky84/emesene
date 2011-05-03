@@ -19,16 +19,39 @@
 #    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 import os
-from e3.common.utils import project_path
+import sys
+
+def we_are_frozen():
+    """Returns whether we are frozen via py2exe.
+    This will affect how we find out where we are located."""
+
+    return hasattr(sys, "frozen")
+
+def project_path():
+    """ This will get us the program's directory,
+    even if we are frozen using py2exe"""
+
+    if we_are_frozen():
+        return os.path.abspath(os.path.dirname(unicode(sys.executable, sys.getfilesystemencoding())))
+    this_module_path = os.path.dirname(unicode(__file__, sys.getfilesystemencoding()))
+
+    return os.path.abspath(this_module_path)
 
 os.chdir(os.path.abspath(project_path()))
 
-import sys
-import glib
 import gettext
+# load translations
+if os.path.exists('default.mo'):
+    gettext.GNUTranslations(open('default.mo')).install()
+elif os.path.exists('po/'):
+    gettext.install('emesene', 'po/')
+else:
+    gettext.install('emesene')
+
+import glib
 import optparse
 import shutil
-
+import signal
 import string
 
 import debugger
@@ -44,6 +67,11 @@ try:
     from e3.common.DBus import DBusController
 except ImportError:
     DBusController = None
+
+try:
+    from e3.common.NetworkManagerHelper import DBusNetworkChecker
+except ImportError:
+    DBusNetworkChecker = None
 
 try:
     from gui import gtkui
@@ -70,20 +98,11 @@ except Exception, exc:
 from pluginmanager import get_pluginmanager
 import extension
 import interfaces
-
 import gui
 
 # fix for gstreamer --help
 argv = sys.argv
 sys.argv = [argv[0]]
-
-# load translations
-if os.path.exists('default.mo'):
-    gettext.GNUTranslations(open('default.mo')).install()
-elif os.path.exists('po/'):
-    gettext.install('emesene', 'po/')
-else:
-    gettext.install('emesene')
 
 class SingleInstanceOption(object):
     '''option parser'''
@@ -136,6 +155,9 @@ class Controller(object):
         self._parse_commandline()
         self._setup()
 
+        signal.signal(signal.SIGINT, lambda *args: glib.idle_add(self.close_session()))
+        signal.signal(signal.SIGTERM, lambda *args: glib.idle_add(self.close_session()))
+
     def _setup(self):
         '''register core extensions'''
         extension.category_register('session', dummy.Session, single_instance=True)
@@ -159,6 +181,13 @@ class Controller(object):
             self.dbus_ext = extension.get_and_instantiate('external api')
         else:
             self.dbus_ext = None
+
+        if DBusNetworkChecker is not None:
+            extension.category_register('network checker', DBusNetworkChecker)
+            extension.set_default('network checker', DBusNetworkChecker)
+            self.network_checker = extension.get_and_instantiate('network checker')
+        else:
+            self.network_checker = None
 
         extension.category_register('sound', e3.common.play_sound.play)
         extension.category_register('notification',
@@ -195,7 +224,7 @@ class Controller(object):
     def start(self, account=None):
         '''the entry point to the class'''
         windowcls = extension.get_default('window frame')
-        self.window = windowcls(None) # main window
+        self.window = windowcls(self.close_session) # main window
         self._set_location(self.window)
 
         if self.tray_icon is not None:
@@ -252,9 +281,15 @@ class Controller(object):
         #let's start dbus
         if self.dbus_ext is not None:
             self.dbus_ext.set_new_session(self.session)
+        if self.network_checker is not None:
+            self.network_checker.set_new_session(self.session)
 
-    def close_session(self, do_exit=True):
+    def close_session(self, do_exit=True, on_reconnect=False):
         '''close session'''
+        # prevent preference window from staying open and breaking things
+        pref = extension.get_instance('preferences')
+        if pref:
+            pref.hide()
 
         self._remove_subscriptions()
 
@@ -269,10 +304,12 @@ class Controller(object):
         if self.session is not None:
             self.session.quit()
 
+        self.window.on_disconnect(self.close_session)
+
         self.save_extensions_config()
         self._save_login_dimensions()
 
-        if self.session is not None:
+        if self.session is not None and not on_reconnect:
             self.session.save_config()
             self.session = None
 
@@ -358,10 +395,14 @@ class Controller(object):
             if posy < (-height):
                 posy = 0
 
-        self.config.i_login_posx = posx
-        self.config.i_login_posy = posy
-        self.config.i_login_width = width
-        self.config.i_login_height = height
+        if not self.window.is_maximized():
+            self.config.i_login_posx = posx
+            self.config.i_login_posy = posy
+            self.config.i_login_width = width
+            self.config.i_login_height = height
+            self.config.b_login_maximized = False
+        else:
+            self.config.b_login_maximized = True
 
     def draw_main_screen(self):
         '''create and populate the main screen
@@ -388,6 +429,13 @@ class Controller(object):
         self.window.go_main(self.session,
             self.on_new_conversation, self.on_close, self.on_user_disconnect)
 
+    def _sync_emesene1(self):
+        syn = extension.get_default('synch tool')
+        user = self.session.account.account
+        current_service = self.session.config.d_user_service.get(user, 'msn')
+        syn = syn(self.session, current_service)
+        syn.show()
+
     def _set_location(self, window, is_conv=False):
         '''get and set the location of the window'''
         if is_conv:
@@ -395,11 +443,22 @@ class Controller(object):
             posy = self.session.config.get_or_set('i_conv_posy', 100)
             width = self.session.config.get_or_set('i_conv_width', 600)
             height = self.session.config.get_or_set('i_conv_height', 400)
+            maximized = self.session.config.get_or_set('b_conv_maximized', False)
         else:
             posx = self.config.get_or_set('i_login_posx', 100)
             posy = self.config.get_or_set('i_login_posy', 100)
             width = self.config.get_or_set('i_login_width', 250)
             height = self.config.get_or_set('i_login_height', 410)
+            maximized = self.config.get_or_set('b_login_maximized', False)
+
+        screen = window.get_screen()
+        pwidth, pheight = screen.get_width(), screen.get_height()
+        if posx > pwidth:
+            posx = pwidth // 2
+        if posy > pheight:
+            posy = pheight // 2
+        if maximized:
+            window.maximize()
 
         window.set_location(width, height, posx, posy)
 
@@ -440,6 +499,7 @@ class Controller(object):
                         self.window.content)
 
         self.set_default_extensions_from_config()
+        self._sync_emesene1()
 
     def on_login_connect(self, account, session_id, proxy,
                          use_http, host=None, port=None, on_reconnect=False):
@@ -463,6 +523,7 @@ class Controller(object):
 
         # set default values if not already set
         self.session.config.get_or_set('b_conv_minimized', True)
+        self.session.config.get_or_set('b_conv_maximized', False)
         self.session.config.get_or_set('b_mute_sounds', False)
         self.session.config.get_or_set('b_play_send', True)
         self.session.config.get_or_set('b_play_nudge', True)
@@ -483,6 +544,8 @@ class Controller(object):
                 'renkoo.AdiumMessageStyle')
         self.session.config.get_or_set('b_enable_spell_check', False)
         self.session.config.get_or_set('b_download_folder_per_account', False)
+        self.session.config.get_or_set('b_override_text_color', False)
+        self.session.config.get_or_set('override_text_color', '#000000')
 
         self.timeout_id = glib.timeout_add(500,
                 self.session.signals._handle_events)
@@ -553,10 +616,12 @@ class Controller(object):
                 conv_manager = window.content
                 self.conversations.append(conv_manager)
 
-                if self.session.config.b_conv_minimized:
+                if self.session.config.b_conv_minimized and other_started:
                     window.iconify()
-
-                window.show()
+                    window.show()
+                    window.iconify()
+                else:
+                    window.show()
 
             else:
                 conv_manager = self.conversations[0]
@@ -594,10 +659,14 @@ class Controller(object):
             if posy < (-height):
                 posy = 0
 
-        self.session.config.i_conv_width = width
-        self.session.config.i_conv_height = height
-        self.session.config.i_conv_posx = posx
-        self.session.config.i_conv_posy = posy
+        if not conv_manager.is_maximized():
+            self.session.config.i_conv_width = width
+            self.session.config.i_conv_height = height
+            self.session.config.i_conv_posx = posx
+            self.session.config.i_conv_posy = posy
+            self.session.config.b_conv_maximized = False
+        else:
+            self.session.config.b_conv_maximized = True
 
         conv_manager.close_all()
         self.conversations.remove(conv_manager)
@@ -616,10 +685,11 @@ class Controller(object):
     def on_disconnected(self, reason, reconnect=0):
         '''called when the server disconnect us'''
         account = self.session.account
-        self.close_session(False)
         if reconnect:
+            self.close_session(False, True)
             self.on_reconnect(account)
         else:
+            self.close_session(False)
             self.go_login(cancel_clicked=True, no_autologin=True)
             if(reason != None):
                 self.window.content.clear_all()

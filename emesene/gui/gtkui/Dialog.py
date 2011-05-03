@@ -24,6 +24,7 @@ import os
 import gtk
 import pango
 import gobject
+import webbrowser
 
 import e3
 import gui
@@ -72,6 +73,20 @@ class Dialog(object):
         label.set_markup('<span>' + \
             text + "</span>")
         window.hbox.pack_start(label, True, True)
+        label.show()
+
+        return label
+
+    @classmethod
+    def window_add_label_vbox(cls, window, text):
+        '''add a label with the text (as pango) on the window'''
+
+        label = gtk.Label()
+        label.set_selectable(True)
+        label.set_use_markup(True)
+        label.set_markup('<span>' + \
+            text + "</span>")
+        window.vbox.pack_start(label, True, True)
         label.show()
 
         return label
@@ -140,9 +155,9 @@ class Dialog(object):
         response_cb(response, contact, group)
 
     @classmethod
-    def common_window(cls, message, stock_id, response_cb, title):
+    def common_window(cls, message, stock_id, response_cb, title, *args):
         '''create a window that displays a message with a stock image'''
-        window = cls.new_window(title, response_cb)
+        window = cls.new_window(title, response_cb, *args)
         cls.window_add_image(window, stock_id)
         cls.window_add_label(window, message)
 
@@ -162,7 +177,7 @@ class Dialog(object):
     def entry_window(cls, message, text, response_cb, title, *args):
         '''create a window that contains a label and a entry with text set
         and selected, and two buttons, accept, cancel'''
-        window = cls.new_window(title, response_cb)
+        window = cls.new_window(title, response_cb, stock.CANCEL, *args)
         cls.window_add_label(window, message)
 
         entry = gtk.Entry()
@@ -172,9 +187,9 @@ class Dialog(object):
         entry.connect('activate', cls.entry_cb, window, response_cb, *args)
 
         window.hbox.pack_start(entry, True, True)
-        cls.add_button(window, gtk.STOCK_CANCEL, stock.CANCEL, response_cb,
-            cls.entry_cb, *args)
         cls.add_button(window, gtk.STOCK_OK, stock.ACCEPT, response_cb,
+            cls.entry_cb, *args)
+        cls.add_button(window, gtk.STOCK_CANCEL, stock.CANCEL, response_cb,
             cls.entry_cb, *args)
 
         setattr(window, 'entry', entry)
@@ -208,7 +223,6 @@ class Dialog(object):
         window.set_default_size(150, 100)
         window.set_position(gtk.WIN_POS_CENTER)
         window.set_border_width(8)
-        window.set_icon(utils.safe_gtk_image_load(gui.theme.logo).get_pixbuf())
 
         vbox = gtk.VBox(spacing=4)
         hbox = gtk.HBox(spacing=4)
@@ -354,7 +368,7 @@ class Dialog(object):
         Yes and No, return the response as stock.YES or stock.NO or
         stock.CLOSE if the user closes the window'''
         window = cls.common_window(message, gtk.STOCK_DIALOG_QUESTION,
-            response_cb, _("Confirm"))
+            response_cb, _("Confirm"), stock.NO)
         cls.add_button(window, gtk.STOCK_YES, stock.YES, response_cb,
             cls.default_cb, *args)
         cls.add_button(window, gtk.STOCK_NO, stock.NO, response_cb,
@@ -541,8 +555,16 @@ class Dialog(object):
         * authors: a list or tuple of strings containing the contributors
         * translators: a string containing the translators
         '''
+        def on_website_hook(dialog, web):
+            '''called when the website item is selected'''
+            webbrowser.open(web)
+
+        def on_email_hook(dialog, mail):
+            webbrowser.open("mailto://"+mail)
 
         about = gtk.AboutDialog()
+        gtk.about_dialog_set_url_hook(on_website_hook)
+        gtk.about_dialog_set_email_hook(on_email_hook)
         about.set_name(name)
         about.set_version(version)
         about.set_copyright(copyright)
@@ -553,7 +575,6 @@ class Dialog(object):
         about.set_authors(authors)
         about.set_translator_credits(translators)
         icon = gtk.gdk.pixbuf_new_from_file(logo_path)
-        about.set_icon(icon)
         about.set_logo(icon)
         about.run()
         about.hide()
@@ -756,7 +777,10 @@ class Dialog(object):
         box.attach(l_server_port, 0, 1, 1, 2)
         box.attach(t_server_port, 1, 2, 1, 2)
         box.attach(c_use_http, 0, 2, 2, 3)
-        box.attach(c_use_proxy, 0, 2, 3, 4)
+        # TODO: FIXME: Temporary hack for 2.0 release.
+        # msn (papylib) automagically gets system proxies
+        if service != 'msn':
+            box.attach(c_use_proxy, 0, 2, 3, 4)
         box.attach(l_host, 0, 1, 4, 5)
         box.attach(t_proxy_host, 1, 2, 4, 5)
         box.attach(l_port, 0, 1, 5, 6)
@@ -899,6 +923,9 @@ class Dialog(object):
         content = gtk.Table(homogeneous=True)
         if format_type == 'nick':
             window = cls.new_window(_('Nick Format Help'))
+            cls.window_add_label_vbox(window, _('Example:'))
+            cls.window_add_label_vbox(window, \
+            '[$DISPLAY_NAME][$NL][$small][$ACCOUNT][$/small][$NL][$small][$BLOCKED] ([$STATUS]) - [$MESSAGE][$/small]')
             content.attach(TableText('[$NICK]'), 0, 1, 0, 1)
             content.attach(TableText(_('Nickname')), 1, 2, 0, 1)
             content.attach(TableText('[$ACCOUNT]'), 0, 1, 1, 2)
@@ -932,6 +959,13 @@ class Dialog(object):
         content.attach(TableText(_('Give text a color (in hex)')), 1, 2, last + 3, last + 4)
         window.hbox.pack_start(content)
         window.show_all()
+
+    @classmethod
+    def sync_progress_window(cls, title, callback):
+        '''returns a progress window used for emesene 1 synch'''
+        dialog = ProgressWindow(title, callback)
+        dialog.show_all()
+        return dialog
 
 class ImageChooser(gtk.FileChooserDialog):
     '''a class to select images'''
@@ -1211,6 +1245,24 @@ class EmotesWindow(gtk.Window):
             gobject.source_remove(self.tag)
             self.tag = None
 
+    def _get_emo_image(self, path, size):
+        '''try to return an image from path
+        '''
+        width, height = size
+        try:
+            animation = gtk.gdk.PixbufAnimation(path)
+        except gobject.GError:
+            return None
+
+        if animation.is_static_image():
+            pix = utils.gtk_pixbuf_load(path, (width, height))
+            picture = gtk.image_new_from_pixbuf(pix)
+        else:
+            myanimation = utils.simple_animation_scale(path, width, height)
+            picture = gtk.image_new_from_animation(myanimation)
+
+        return picture
+
     def _fill_emote_table(self, columns):
         '''fill the gtk.Table with the emoticons'''
         emotes = []
@@ -1233,7 +1285,7 @@ class EmotesWindow(gtk.Window):
                 log.debug(shortcut + ' has no path')
                 continue
 
-            button.set_image(utils.safe_gtk_image_load(path, (20, 20)))
+            button.set_image(self._get_emo_image(path, (20, 20)))
             button.set_tooltip_text(shortcut)
             button.set_relief(gtk.RELIEF_NONE)
             button.connect('clicked', self._on_emote_selected, shortcut)
@@ -1249,7 +1301,7 @@ class EmotesWindow(gtk.Window):
             button = gtk.Button()
             path = os.path.join(self.emcache.path, hash_)
 
-            button.set_image(utils.safe_gtk_image_load(path, (20, 20)))
+            button.set_image(self._get_emo_image(path, (20, 20)))
             button.set_tooltip_text(shortcut)
             button.set_relief(gtk.RELIEF_NONE)
             button.connect('clicked', self._on_emote_selected, shortcut)
@@ -1340,7 +1392,6 @@ class InviteWindow(gtk.Window):
         """
         gtk.Window.__init__(self)
         self.set_border_width(1)
-        self.set_icon(utils.safe_gtk_image_load(gui.theme.logo).get_pixbuf())
         self.set_title(_('Invite friend'))
         self.set_default_size(300, 250)
         self.session = session
@@ -1630,3 +1681,32 @@ class TinyArrow(gtk.DrawingArea):
             self.margin = margin
         self.set_size_request(*self.get_size())
         self.expose()
+
+class ProgressWindow(gtk.Window):
+    '''A class for a progressbar dialog'''
+
+    def __init__(self, title, callback):
+        '''Constructor. Packs widgets'''
+        gtk.Window.__init__(self)
+        self.set_title(title)
+        self.set_role("dialog")
+        self.set_type_hint(gtk.gdk.WINDOW_TYPE_HINT_DIALOG)
+        self.set_default_size(300, 50)
+        self.set_position(gtk.WIN_POS_CENTER)
+        self.set_border_width(8)
+        vbox = gtk.VBox()
+        self.progressbar = gtk.ProgressBar()
+        self.desclabel = gtk.Label()
+        vbox.pack_start(self.desclabel)
+        vbox.pack_start(self.progressbar)
+        self.add(vbox)
+        
+    def update(self, progress):
+        '''called when the progress is updated'''
+        self.progressbar.set_fraction(progress / 100.0)
+        self.progressbar.set_text("%d %s" % (progress, "%"))
+
+    def set_action(self, action):
+        '''called when the action changes'''
+        self.desclabel.set_text(action)
+

@@ -16,11 +16,17 @@
 #    along with emesene; if not, write to the Free Software
 #    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
+import os
+import re
 import gtk
 import glib
+import urllib
 
+import utils
 import gui
 import extension
+import e3
+import Dialog
 
 class Conversation(gtk.VBox, gui.Conversation):
     '''a widget that contains all the components inside'''
@@ -83,10 +89,10 @@ class Conversation(gtk.VBox, gui.Conversation):
             dialog, gui.theme, self)
         self.toolbar = ConversationToolbar(toolbar_handler)
         self.toolbar.set_property('can-focus', False)
-        self.output = OutputText(self.session.config)
+        self.output = OutputText(self.session.config, self.steal_emoticon_cb)
         self.output.set_size_request(-1, 30)
         self.input = InputText(self.session.config, self._on_send_message,
-                self.cycle_history)
+                self.cycle_history, self.on_drag_data_received)
         self.output.set_size_request(-1, 25)
         self.input.set_size_request(-1, 25)
         self.info = ContactInfo()
@@ -135,8 +141,11 @@ class Conversation(gtk.VBox, gui.Conversation):
             account = members[0]
             contact = self.session.contacts.get(account)
 
-            if contact and contact.picture:
-                his_picture = contact.picture
+            if contact:
+                if contact.picture:
+                    his_picture = contact.picture
+                self.output.clear(account, contact.nick,
+                         contact.display_name, his_picture, my_picture)
 
         self.info.first = self.his_avatarBox
         self.his_avatar.set_from_file(his_picture)
@@ -171,6 +180,8 @@ class Conversation(gtk.VBox, gui.Conversation):
                 self.on_filetransfer_progress)
         self.session.signals.filetransfer_completed.subscribe(
                 self.on_filetransfer_completed)
+        self.session.signals.filetransfer_rejected.subscribe(
+                self.on_filetransfer_rejected)
 
         self.session.signals.call_invitation.subscribe(
                 self.on_call_invitation)
@@ -178,10 +189,11 @@ class Conversation(gtk.VBox, gui.Conversation):
         self.tab_index = -1 # used to select an existing conversation
         self.index = 0 # used for the rotate picture function
         self.rotate_started = False
+        self.timer = 0
 
         if self.group_chat:
             self.rotate_started = True #to prevents more than one timeout_add
-            glib.timeout_add_seconds(5, self.rotate_picture)
+            self.timer = glib.timeout_add_seconds(5, self.rotate_picture)
 
     def _on_avatar_click(self, widget, data):
         '''method called when user click on his avatar
@@ -189,6 +201,36 @@ class Conversation(gtk.VBox, gui.Conversation):
         av_chooser = extension.get_default('avatar chooser')(self.session)
         av_chooser.set_modal(True)
         av_chooser.show()
+
+    def steal_emoticon_cb(self, path_uri):
+        '''receives the path or the uri for the emoticon to be added'''
+        if path_uri.startswith("file://"):
+            path_uri = path_uri[8:]
+            path_uri = urllib.url2pathname(path_uri)
+
+        directory = os.path.dirname(path_uri).lower()
+        caches = e3.cache.CacheManager(self.session.config_dir.base_dir)
+        emcache = caches.get_emoticon_cache(self.session.account.account)
+
+        if directory.endswith(gui.theme.emote_path.lower()):
+            Dialog.Dialog.information(_("Can't add, default emoticon"))
+        elif directory == emcache.path.lower():
+            Dialog.Dialog.information(_("Can't add, own emoticon"))
+        else:
+            def on_response(dialog,response):
+                if response == gtk.RESPONSE_ACCEPT:
+                    shortcut = dialog.entry.get_text()
+                    if shortcut not in emcache.list():
+                        self.emcache.insert((shortcut, path_uri))
+                    # TODO: check if the file's hash is not already on the cache
+                    else:
+                        Dialog.Dialog.information(_("Shorctut already in use"))
+
+            dialog = Dialog.Dialog.entry_window(
+                        _("Type emoticon's shortcut: "), "", on_response, \
+                        _("Choose custom emoticon's shortcut"))
+            dialog.entry.set_max_length(7)
+            dialog.show()
 
     def _on_his_avatar_click(self, widget, data):
         '''method called when user click on the other avatar
@@ -264,9 +306,16 @@ class Conversation(gtk.VBox, gui.Conversation):
         self.session.signals.call_invitation.unsubscribe(
                 self.on_call_invitation)
 
+        #stop the group chat image rotation timer, if it's started
+        if self.rotate_started:
+            glib.source_remove(self.timer)
+
         #stop the avatars animation...if any..
         self.avatar.stop()
         self.his_avatar.stop()
+        
+        #stop the parse emotes timeout of the inputbox
+        self.input.stop_parse_emotes()
 
     def show(self):
         '''override the show method'''
@@ -349,7 +398,7 @@ class Conversation(gtk.VBox, gui.Conversation):
         """
         if not self.rotate_started:
             self.rotate_started = True
-            glib.timeout_add_seconds(5, self.rotate_picture)
+            self.timer = glib.timeout_add_seconds(5, self.rotate_picture)
 
         #TODO add plus support for nick to the tab label!
         members_nick = []
@@ -368,7 +417,7 @@ class Conversation(gtk.VBox, gui.Conversation):
             members_nick.append(nick)
 
         self.header.information = \
-            ('%d members' % (len(self.members) + 1, ),
+            (_('%d members') % (len(self.members) + 1, ),
                     ", ".join(members_nick))
         self.update_tab()
 
@@ -414,7 +463,14 @@ class Conversation(gtk.VBox, gui.Conversation):
             else:
                 self.index = 0
 
+        if len(self.members) == 1:
+            self.index = 0
+            glib.source_remove(self.timer)
+            self.rotate_started = False
+        elif self.index > len(self.members):
+            self.index = 0
         contact = self.session.contacts.get(self.members[self.index])
+
         if contact is None:
             increment()
             return True
@@ -426,6 +482,9 @@ class Conversation(gtk.VBox, gui.Conversation):
 
         increment()
         return True
+
+    def get_preview(self, completepath):
+        return utils.makePreview(completepath)
 
     def on_user_typing(self, account):
         """
@@ -464,6 +523,11 @@ class Conversation(gtk.VBox, gui.Conversation):
         if transfer in self.transfers_bar.transfers:
             self.transfers_bar.accepted(transfer)
 
+        if transfer.contact.account == self.members[0]:
+            contact = self._member_to_contact(self.members[0])
+            self.output.information(self.formatter, contact,
+                    _('File transfer accepted by %s') % (contact.display_name))
+
     def on_filetransfer_progress(self, transfer):
         ''' called every chunk received '''
         if transfer in self.transfers_bar.transfers:
@@ -474,16 +538,26 @@ class Conversation(gtk.VBox, gui.Conversation):
         if transfer in self.transfers_bar.transfers:
             self.transfers_bar.update(transfer)
 
+        if transfer.contact.account == self.members[0]:
+            contact = self._member_to_contact(self.members[0])
+            self.output.information(self.formatter, contact,
+                    _('File transfer rejected by %s') % (contact.display_name))
+
     def on_filetransfer_completed(self, transfer):
         ''' called when a file transfer is completed '''
         if transfer in self.transfers_bar.transfers:
             self.transfers_bar.finished(transfer)
 
-    def on_call_invitation(self, call, cid):
+        if transfer.contact.account == self.members[0]:
+            contact = self._member_to_contact(self.members[0])
+            self.output.information(self.formatter, contact,
+                    _('File transfer completed!'))
+
+    def on_call_invitation(self, call, cid, westart=False):
         '''called when a new call is issued both from us or other party'''
         if cid == self.cid:
-            self.call_widget.add_call(call)
-            self.call_widget.show_all()
+            self.call_widget.add_call(call, westart)
+            self.call_widget.show_all_widgets()
             self.call_widget.set_xids()
 
     def on_video_call(self):
@@ -506,4 +580,33 @@ class Conversation(gtk.VBox, gui.Conversation):
         self.call_widget.show_all()
         x_other, x_self = self.call_widget.get_xids()
         self.session.call_invite(self.cid, account, 2, x_other, x_self) # 2 = Audio/Video
+
+    def on_drag_data_received(self, widget, context, posx, posy,\
+                          selection, info, timestamp):
+        '''called when a file is received by text input widget'''
+        uri = selection.data.strip()
+        uri_splitted = uri.split()
+        for uri in uri_splitted:
+            path = self.__get_file_path_from_dnd_dropped_uri(uri)
+            if os.path.isfile(path):
+                filename = os.path.basename(path)
+                self.on_filetransfer_invite(filename, path)
+
+    def __get_file_path_from_dnd_dropped_uri(self, uri):
+        '''Parses an URI received from dnd and return the real path'''
+
+        if os.name != 'nt':
+            path = urllib.url2pathname(uri) # escape special chars
+        else:
+            path = urllib.unquote(uri) # escape special chars
+        path = path.strip('\r\n\x00') # remove \r\n and NULL
+
+        # get the path to file
+        if re.match('^file:///[a-zA-Z]:/', path): # windows
+            path = path[8:] # 8 is len('file:///')
+        elif path.startswith('file://'): # nautilus, rox
+            path = path[7:] # 7 is len('file://')
+        elif path.startswith('file:'): # xffm
+            path = path[5:] # 5 is len('file:')
+        return path
 

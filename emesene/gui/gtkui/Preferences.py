@@ -20,12 +20,11 @@ import gtk
 import webbrowser
 
 import e3.common
-from e3.synch.synchronizer import *
 import gui
 import utils
 import extension
 
-import os
+from gui.base import MarkupParser
 
 import PluginWindow
 
@@ -62,11 +61,8 @@ class Preferences(gtk.Window):
         self.session = session
 
         self.set_default_size(600, 400)
-        self.set_type_hint(gtk.gdk.WINDOW_TYPE_HINT_DIALOG)
-
-        if utils.file_readable(gui.theme.logo):
-            self.set_icon(
-                utils.safe_gtk_image_load(gui.theme.logo).get_pixbuf())
+        # GNOME3 likes to break things..was WINDOW_TYPE_HINT_DIALOG
+        self.set_type_hint(gtk.gdk.WINDOW_TYPE_HINT_MENU)
 
         ''' TREE VIEW STUFF '''
         # Create the list store model for the treeview.
@@ -202,7 +198,7 @@ class BaseTable(gtk.Table):
             label.set_alignment(0.0, 0.5)
 
         label.set_line_wrap(line_wrap)
-        self.attach(label, column, column + 1, row, row + 1)
+        self.attach(label, column, column + 1, row, row + 1, yoptions=0)
 
     def add_button(self, text, column, row, on_click, xoptions=gtk.EXPAND|gtk.FILL, yoptions=gtk.EXPAND|gtk.FILL):
         """add a button with text to the row and column, connect the clicked
@@ -274,14 +270,21 @@ class BaseTable(gtk.Table):
 
         self.append_row(hbox, None)
 
-    def append_check(self, text, property_name, row=None):
-        """append a row with a check box with text as label and
+    def create_check(self, text, property_name):
+        """create a CheckButton and
         set the check state with default
         """
         default = self.get_attr(property_name)
         widget = gtk.CheckButton(text)
         widget.set_active(default)
         widget.connect('toggled', self.on_toggled, property_name)
+        return widget
+
+    def append_check(self, text, property_name, row=None):
+        """append a row with a check box with text as label and
+        set the check state with default
+        """
+        widget = self.create_check(text, property_name)
         self.append_row(widget, row)
         return widget
 
@@ -313,10 +316,9 @@ class BaseTable(gtk.Table):
 
         self.append_row(hbox, None)
 
-    def append_combo(self, text, getter, property_name,values=None):
-        """append a row with a check box with text as label and
-        set the check state with default
-        """      
+    def create_combo_with_label(self, text, getter, property_name,values=None):
+        """creates and return a new ComboBox with a label and append values to the combo
+        """
         if values:
             default = getter()[values.index(self.get_attr(property_name))]
         else:
@@ -342,6 +344,13 @@ class BaseTable(gtk.Table):
         hbox.pack_start(combo, False)
 
         combo.connect('changed', self.on_combo_changed, property_name, values)
+
+        return hbox
+
+    def append_combo(self, text, getter, property_name,values=None):
+        """append a label and a combo and adds values to it
+        """
+        hbox = self.create_combo_with_label(text, getter, property_name,values)
         self.append_row(hbox, None)
 
     def append_markup(self, text):
@@ -424,11 +433,12 @@ class BaseTable(gtk.Table):
         self.session.signals.contact_list_ready.emit()
 
     def on_synch_emesene1(self, button):
-        """called when the Redraw main screen button is clicked"""
-        syn = get_synchronizer("emesene")
-        syn.set_user(self.session._account.account)
-        syn.start_synch(self.session)
-
+        """called when the Synch test button is clicked"""
+        syn = extension.get_default('synch tool')
+        user = self.session.account.account
+        current_service = self.session.config.d_user_service.get(user, 'msn')
+        syn = syn(self.session, current_service)
+        syn.show(True)
 
 class Interface(BaseTable):
     """the panel to display/modify the config related to the gui
@@ -437,7 +447,7 @@ class Interface(BaseTable):
     def __init__(self, session):
         """constructor
         """
-        BaseTable.__init__(self, 4, 2)
+        BaseTable.__init__(self, 17, 2)
         self.set_border_width(5)
         self.session = session
 
@@ -454,6 +464,10 @@ class Interface(BaseTable):
                 self.lang_menu.set_active(index)
             index += 1
 
+        self.session.config.get_or_set('i_tab_position', 0)
+        self.tab_pos_cb = self.create_combo_with_label(_('Tab position'), self.get_tab_positions,
+                'session.config.i_tab_position',range(4))
+
         self.append_markup('<b>'+_('Main window:')+'</b>')
         self.append_check(_('Show user panel'),
             'session.config.b_show_userpanel')
@@ -461,11 +475,9 @@ class Interface(BaseTable):
         self.session.config.get_or_set('b_avatar_on_left', False)
         self.session.config.get_or_set('b_toolbar_small', False)
         self.session.config.get_or_set('b_conversation_tabs', True)
-        self.session.config.get_or_set('i_tab_position', 0)
         self.append_check(_('Tabbed Conversations'),
                 'session.config.b_conversation_tabs')
-        self.append_combo(_('Tab position'),self.get_tab_positions,
-                'session.config.i_tab_position',range(4))
+        self.append_row(self.tab_pos_cb)
         self.session.config.get_or_set('b_show_avatar_in_taskbar', True)
         self.append_check(_('Start minimized/iconified'), 'session.config.b_conv_minimized')
         self.append_check(_('Show emoticons'), 'session.config.b_show_emoticons')
@@ -475,15 +487,24 @@ class Interface(BaseTable):
             'session.config.b_show_info')
         self.append_check(_('Show conversation toolbar'),
             'session.config.b_show_toolbar')
-        self.append_check(_('Small conversation toolbar'),
+        # small-toolbar sensitivity depends on conversation toolbar visibility
+        self.cb_small_toolbar = self.create_check(_('Small conversation toolbar'), 
             'session.config.b_toolbar_small')
-        self.append_check(_('Avatar on conversation left side'),
+        self.session.config.subscribe(self._on_cb_show_toolbar_changed,
+            'b_show_toolbar')
+        self.append_row(self.cb_small_toolbar)
+
+        # Avatar-on-left sensitivity depends on side panel visibility
+        self.cb_avatar_left = self.create_check(_('Avatar on conversation left side'), 
             'session.config.b_avatar_on_left')
+        self.session.config.subscribe(self._on_cb_side_panel_changed,
+            'b_show_info')
+        self.append_row(self.cb_avatar_left)
         self.append_check(_('Allow auto scroll in conversation'),
             'session.config.b_allow_auto_scroll')
         self.append_check(_('Enable spell check if available (requires %s)') % 'python-gtkspell',
             'session.config.b_enable_spell_check')
-        self.attach(self.lang_menu, 2, 3, 13, 14) 
+        self.attach(self.lang_menu, 2, 3, 13, 14)
         self.append_check(_('Show avatars in taskbar instead of status icons'), 
             'session.config.b_show_avatar_in_taskbar')
 
@@ -494,8 +515,32 @@ class Interface(BaseTable):
         
         self.session.config.subscribe(self._on_spell_change,
             'b_enable_spell_check')
-        
+
+        self.session.config.subscribe(self._on_conversation_tabs_change,
+            'b_conversation_tabs')
+
+        #update tab_pos combo sensitivity
+        self._on_conversation_tabs_change(self.session.config.get_or_set('b_conversation_tabs', True))
+        #update spell lang combo sensitivity
+        self._on_spell_change(self.session.config.get_or_set('b_enable_spell_check', False))
+        #update side-panel dependent options sensitivity
+        self._on_cb_side_panel_changed(self.session.config.get_or_set('b_show_info', True))
+        #update small-toolbar sensitivity
+        self._on_cb_show_toolbar_changed(self.session.config.get_or_set('b_show_toolbar', True))
+
         self.show_all()
+
+    def _on_cb_show_toolbar_changed(self, value):
+        if value:
+            self.cb_small_toolbar.set_sensitive(True)
+        else:
+            self.cb_small_toolbar.set_sensitive(False)
+
+    def _on_cb_side_panel_changed(self, value):
+        if value:
+            self.cb_avatar_left.set_sensitive(True)
+        else:
+            self.cb_avatar_left.set_sensitive(False)
 
     def _on_spell_change(self, value):
         if value:
@@ -503,11 +548,18 @@ class Interface(BaseTable):
         else:
             self.lang_menu.set_sensitive(False)
 
+    def _on_conversation_tabs_change(self, value):
+        if value:
+            self.tab_pos_cb.set_sensitive(True)
+        else:
+            self.tab_pos_cb.set_sensitive(False)
+
     def _on_lang_combo_change(self, combo):
         self.session.config.spell_lang = combo.get_active_text()
 
     def get_tab_positions(self):
         return [_("Top"),_("Bottom"),_("Left"),_("Right")]
+
 class Sound(BaseTable):
     """the panel to display/modify the config related to the sounds
     """
@@ -515,13 +567,14 @@ class Sound(BaseTable):
     def __init__(self, session):
         """constructor
         """
-        BaseTable.__init__(self, 6, 1)
+        BaseTable.__init__(self, 7, 1)
         self.set_border_width(5)
         self.session = session
         self.array = []
-        self.append_markup('<b>'+_('Messages events:')+'</b>')
+        self.append_markup('<b>'+_('General:')+'</b>')
         self.append_check(_('Mute sounds'),
             'session.config.b_mute_sounds')
+        self.append_markup('<b>'+_('Messages events:')+'</b>')
         self.array.append(self.append_check(_('Play sound on sent message'),
             'session.config.b_play_send'))
         self.array.append(self.append_check(_('Play sound on first received message'),
@@ -557,13 +610,15 @@ class Notification(BaseTable):
     def __init__(self, session):
         """constructor
         """
-        BaseTable.__init__(self, 2, 1)
+        BaseTable.__init__(self, 4, 1)
         self.set_border_width(5)
         self.session = session
+        self.append_markup('<b>'+_('Users events:')+'</b>')
         self.append_check(_('Notify on contact online'),
             'session.config.b_notify_contact_online')
         self.append_check(_('Notify on contact offline'),
             'session.config.b_notify_contact_offline')
+        self.append_markup('<b>'+_('Messages events:')+'</b>')
         self.append_check(_('Notify on received message'),
             'session.config.b_notify_receive_message')
         self.show_all()
@@ -583,6 +638,27 @@ class Theme(BaseTable):
 
         self.session.config.get_or_set('adium_theme', 'renkoo')
 
+        cb_override_text_color = self.create_check(_('Override incoming text color'), 'session.config.b_override_text_color')
+        self.session.config.subscribe(self._on_cb_override_text_color_toggled,
+            'b_override_text_color')
+
+        def on_color_selected(cb):
+            col = cb.get_color()
+            col_e3 = e3.base.Color(col.red, col.green, col.blue)
+            self.set_attr('session.config.override_text_color', '#'+col_e3.to_hex())
+
+        self.b_text_color = gtk.ColorButton(color=gtk.gdk.color_parse(
+                            self.get_attr('session.config.override_text_color')))
+        self.b_text_color.set_use_alpha(False)
+        self.b_text_color.connect('color-set', on_color_selected)
+        h_color_box = gtk.HBox()
+        h_color_box.pack_start(cb_override_text_color)
+        h_color_box.pack_start(self.b_text_color)
+
+        self.append_row(h_color_box)
+        #update ColorButton sensitive
+        self._on_cb_override_text_color_toggled(self.session.config.get_or_set('b_override_text_color', False))
+
         self.append_combo(_('Image theme'), gui.theme.get_image_themes,
             'session.config.image_theme')
         self.append_combo(_('Sound theme'), gui.theme.get_sound_themes,
@@ -592,12 +668,18 @@ class Theme(BaseTable):
         self.append_combo(_('Adium theme'), gui.theme.get_adium_themes,
             'session.config.adium_theme')
         self.append_entry_default(_('Nick format'), 'nick',
-                'session.config.nick_template', ContactList.NICK_TPL)
+                'session.config.nick_template_clist', ContactList.NICK_TPL)
         self.append_entry_default(_('Group format'), 'group',
                 'session.config.group_template', ContactList.GROUP_TPL)
 
         self.add_button(_('Apply'), 0, 7,
                 self.on_redraw_main_screen, 0, 0)
+
+    def _on_cb_override_text_color_toggled(self, value):
+        if value:
+            self.b_text_color.set_sensitive(True)
+        else:
+            self.b_text_color.set_sensitive(False)
 
 class Extension(BaseTable):
     """the panel to display/modify the config related to the extensions
@@ -635,11 +717,14 @@ class Extension(BaseTable):
         self.add_text(_('Website'), 0, 6, True)
 
         self.add_label(self.name_info, 1, 3, True)
+        self.description_info.set_width_chars(40)
         self.add_label(self.description_info, 1, 4, True)
         self.add_label(self.author_info, 1, 5, True)
         self.add_label(self.website_info, 1, 6, True)
 
-        self.add_button(_('Redraw main screen'), 1, 7,
+        self.add_text('', 0, 7, True)
+
+        self.add_button(_('Redraw main screen'), 0, 8,
                 self.on_redraw_main_screen, 0, 0)
 
         self.add_button(_('Synch with emesene1'), 1, 8,
@@ -661,8 +746,8 @@ class Extension(BaseTable):
 
         self.categories.connect('changed', self._on_category_changed)
         self.extensions.connect('changed', self._on_extension_changed)
-        self.attach(self.categories, 1, 2, 0, 1, yoptions=gtk.EXPAND)
-        self.attach(self.extensions, 1, 2, 1, 2, yoptions=gtk.EXPAND)
+        self.attach(self.categories, 1, 2, 0, 1, yoptions=0)
+        self.attach(self.extensions, 1, 2, 1, 2, yoptions=0)
         self.categories.set_active(0)
 
     def _on_category_changed(self, combo):
@@ -698,7 +783,7 @@ class Extension(BaseTable):
         ext, identifier = self.extension_list[extension_index]
         if not extension.set_default_by_id(category, identifier):
             # TODO: revert the selection to the previous selected extension
-            log.warning(_('Could not set %s as default extension for %s') % \
+            log.warning(_('Could not set %1 as default extension for %2') % \
                 (extension_index, category))
             return
         else:
@@ -717,7 +802,7 @@ class Extension(BaseTable):
         self.name_info.set_text(name)
         self.description_info.set_text(description)
         self.author_info.set_text(author)
-        self.website_info.set_text(website)
+        self.website_info.set_markup(MarkupParser.urlify(website))
 
     def on_update(self):
         '''called when changed to this page'''
@@ -748,12 +833,7 @@ class DesktopTab(BaseTable):
         self.append_markup('<b>'+_('File transfers')+'</b>')
         self.append_check(_('Sort received files by sender'), 
                           'session.config.b_download_folder_per_account')
-
-        hbox = gtk.HBox(False, 0)
-
-        l_text = gtk.Label(_('Save files to:'))
-        l_text.set_alignment(0.0, 0.5)
-        hbox.pack_start(l_text, True, True)
+        self.add_text(_('Save files to:'), 0, 2, True)
 
         def on_path_selected(f_chooser):
             ''' updates the download dir config value '''
@@ -766,14 +846,11 @@ class DesktopTab(BaseTable):
             buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
                      gtk.STOCK_OPEN, gtk.RESPONSE_OK))
         fc_button = gtk.FileChooserButton(path_chooser)
-        fc_button.set_current_folder(self.session.config.get_or_set("download_folder", 
+        fc_button.set_current_folder(self.session.config.get_or_set("download_folder", \
                 e3.common.locations.downloads()))
         path_chooser.connect('selection-changed', on_path_selected)
-        hbox.pack_start(fc_button, True, True)
+        self.attach(fc_button, 2, 3, 2, 3, gtk.EXPAND|gtk.FILL, 0)
 
-        self.attach(hbox, 0, 3, 2, 3, gtk.EXPAND|gtk.FILL, 0)
-
-        self.show_all()
 
 class MSNPapylib(BaseTable):
     """ This panel contains some msn-papylib specific settings """

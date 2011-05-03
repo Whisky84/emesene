@@ -33,7 +33,7 @@ class TextBox(gtk.ScrolledWindow):
     '''a text box inside a scroll that provides methods to get and set the
     text in the widget'''
 
-    def __init__(self, config):
+    def __init__(self, config, on_drag_data_received=None):
         '''constructor'''
         gtk.ScrolledWindow.__init__(self)
 
@@ -47,6 +47,12 @@ class TextBox(gtk.ScrolledWindow):
         self._textbox.set_pixels_below_lines(4)
         self._textbox.set_wrap_mode(gtk.WRAP_WORD_CHAR)
         self._textbox.show()
+
+        if on_drag_data_received is not None:
+            self.on_drag_data_received = on_drag_data_received
+            self._textbox.drag_dest_add_uri_targets()
+            self._textbox.connect('drag-data-received', self.on_drag_data_received)
+
         self._buffer = RichBuffer.RichBuffer()
         self._textbox.set_buffer(self._buffer)
         self._textbox.connect_after('copy-clipboard', self._on_copy_clipboard)
@@ -160,9 +166,9 @@ class InputText(TextBox):
     AUTHOR = 'Mariano Guerra'
     WEBSITE = 'www.emesene.org'
 
-    def __init__(self, config, on_send_message, on_cycle_history):
+    def __init__(self, config, on_send_message, on_cycle_history, on_drag_data_received):
         '''constructor'''
-        TextBox.__init__(self, config)
+        TextBox.__init__(self, config, on_drag_data_received)
         self.on_send_message = on_send_message
         self.on_cycle_history = on_cycle_history
         self._tag = None
@@ -170,20 +176,20 @@ class InputText(TextBox):
         self._buffer.connect('changed', self.on_changed_event)
 
         self.changed = False
-        gobject.timeout_add(500, self.parse_emotes)
+        self.parse_timeout = gobject.timeout_add(500, self.parse_emotes)
         self.invisible_tag = gtk.TextTag()
         self.invisible_tag.set_property('invisible', True)
         self._buffer.get_tag_table().add(self.invisible_tag)
 
         self.spell_checker = None
 
-        try:
-            import gtkspell
-            if self.config.b_enable_spell_check:
+        if self.config.b_enable_spell_check:
+            try:
+                import gtkspell
                 spell_lang = self.config.get_or_set("spell_lang", "en")
                 self.spell_checker = gtkspell.Spell(self._textbox, spell_lang)
-        except Exception, e:
-            log.warning("Could not load spell-check: %s" % e)
+            except Exception, e:
+                log.warning("Could not load spell-check: %s" % e)
 
         self._textbox.connect_after('message-send', self._on_message_send)
 
@@ -263,6 +269,10 @@ class InputText(TextBox):
 
         return True
 
+    def stop_parse_emotes(self):
+        if self.parse_timeout is not None:
+            gobject.source_remove(self.parse_timeout)
+        self.parse_timeout = None
 
     def update_style(self, style):
         '''update the global style of the widget'''
@@ -322,17 +332,22 @@ class InputText(TextBox):
 class OutputText(TextBox):
     '''a widget that is used to display the messages on the conversation'''
     NAME = 'Output Text'
-    DESCRIPTION = 'A widget to display the conversation messages'
+    DESCRIPTION = _('A widget to display the conversation messages')
     AUTHOR = 'Mariano Guerra'
     WEBSITE = 'www.emesene.org'
 
-    def __init__(self, config):
+    def __init__(self, config, add_emoticon_cb):
         '''constructor'''
         TextBox.__init__(self, config)
         self.set_shadow_type(gtk.SHADOW_IN)
         self._textbox.set_editable(False)
         self._textbox.set_cursor_visible(False)
 
+    def clear(self, source="", target="", target_display="",
+            source_img="", target_img=""):
+        '''clear the content'''
+        TextBox.clear(self)
+    
     def append(self, text, cedict,scroll=True):
         '''append formatted text to the widget'''
         if self.config.b_show_emoticons:
@@ -341,24 +356,21 @@ class OutputText(TextBox):
         #Parse links
         text = MarkupParser.urlify(text)
 
-        #Parse links
-        text = MarkupParser.urlify(text)
-
         TextBox.append(self, text, scroll)
 
-    def send_message(self, formatter, contact, text, cedict, cepath, style, is_first, type_=None):
+    def send_message(self, formatter, contact, message, cedict, cepath, is_first):
         '''add a message to the widget'''
         is_raw, consecutive, outgoing, first, last = \
-            formatter.format(contact, type_)
+            formatter.format(contact, message.type)
 
-        if type_ == e3.Message.TYPE_NUDGE:
+        if message.type == e3.Message.TYPE_NUDGE:
             middle = ''
         else:
             if is_raw:
-                middle = MarkupParser.escape(text)
+                middle = MarkupParser.escape(message.body)
             else:
-                middle = MarkupParser.escape(text)
-                middle = e3.common.add_style_to_message(middle, style, False)
+                middle = MarkupParser.escape(message.body)
+                middle = e3.common.add_style_to_message(middle, message.style, False)
 
         all_ = first + middle + last
         self.append(all_, cedict, self.config.b_allow_auto_scroll)

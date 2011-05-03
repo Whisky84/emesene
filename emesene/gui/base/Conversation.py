@@ -46,7 +46,7 @@ class Conversation(object):
         self._image_visible = True
         self._toolbar_visible = True
 
-        self._message_waiting = False
+        self._message_waiting = True
 
         buffer_size = session.config.get_or_set("i_msg_history_size", 5)
         self.messages = RingBuffer(max=buffer_size)
@@ -106,6 +106,9 @@ class Conversation(object):
         self.cstyle = e3.Style(font, color, font_bold, font_italic,
             font_underline, font_strike, font_size)
 
+    def get_preview(self, completepath):
+        return None
+
     def on_font_selected(self, style):
         '''called when a new font is selected'''
         self.cstyle = style
@@ -127,7 +130,7 @@ class Conversation(object):
     def on_filetransfer_invite(self, filename, completepath):
         '''called when a filetransfer is issued'''
         self.session.filetransfer_invite(self.cid, self.members[0],
-                filename, completepath)
+                filename, completepath, self.get_preview(completepath))
 
     def on_video_call(self):
         '''called when the user is requesting a video-only call'''
@@ -162,9 +165,9 @@ class Conversation(object):
     def on_notify_attention(self):
         '''called when the nudge button is clicked'''
         self.session.request_attention(self.cid)
+        message = e3.Message(e3.Message.TYPE_NUDGE, '', None, None)
         self.output.send_message(self.formatter, self.session.contacts.me,
-                                 '', {}, '', None, self.first,
-                                 e3.Message.TYPE_NUDGE)
+                                 message, {}, '', self.first)
 
         self.play_nudge()
 
@@ -260,8 +263,9 @@ class Conversation(object):
         custom_emoticons = gui.base.MarkupParser.get_custom_emotes(text, self.emcache.parse())
 
         self.session.send_message(self.cid, text, self.cstyle, self.emcache.parse(), custom_emoticons)
+        message = e3.Message(e3.Message.TYPE_MESSAGE, text, None, self.cstyle)
         self.output.send_message(self.formatter, self.session.contacts.me,
-                                 text, self.emcache.parse(), self.emcache.path, self.cstyle, self.first)
+                                 message, self.emcache.parse(), self.emcache.path, self.first)
         self.messages.push(text)
         self.play_send()
         self.first = False
@@ -274,6 +278,9 @@ class Conversation(object):
             contact = e3.Contact(account)
 
         if message.type == e3.Message.TYPE_MESSAGE or message.type == e3.Message.TYPE_FLNMSG:
+            if self.session.config.b_override_text_color:
+                message.style.color = e3.base.Color.from_hex(self.session.config.override_text_color)
+
             user_emcache = self.caches.get_emoticon_cache(account)
             self.output.receive_message(self.formatter, contact, message,
                     received_custom_emoticons, user_emcache.path, self.first)
@@ -284,6 +291,13 @@ class Conversation(object):
                     _('%s just sent you a nudge!') % (contact.display_name,))
             self.play_nudge()
 
+        self.first = False
+
+    def on_send_message_failed(self, errorCode):
+        '''method called when a message fails to be delivered'''
+        contact = self.session.contacts.me
+        self.output.information(self.formatter, contact, \
+                                _('Error delivering message'))
         self.first = False
 
     def on_user_typing(self, account):
@@ -467,4 +481,7 @@ class Conversation(object):
 
     def reset_message_offset(self):
         self.message_offset = 0
+
+    def _member_to_contact(self,member):
+        return self.session.contacts.contacts[member]
 

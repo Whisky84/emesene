@@ -127,23 +127,29 @@ class FileTransferWidget(gtk.HBox):
 
         if state == self.transfer.WAITING and self.transfer.sender != 'Me':        
             button = gtk.Button(None, None)
+            button.set_tooltip_text(_('Accept transfer'))            
             button.set_image(self.__get_button_img(gtk.STOCK_APPLY))
             button.connect('clicked', self._on_accept_clicked)
             self.buttons.append(button)
+
+        if state == self.transfer.WAITING or state == self.transfer.TRANSFERRING:        
+            b_cancel = gtk.Button(None, None)
+            if state == self.transfer.WAITING and self.transfer.sender != 'Me':
+                b_cancel.set_tooltip_text(_('Reject transfer'))
+            else:
+                b_cancel.set_tooltip_text(_('Cancel transfer'))
+            b_cancel.set_image(self.__get_button_img(gtk.STOCK_CANCEL))
+            b_cancel.connect('clicked', self._on_cancel_clicked)
+            self.buttons.append(b_cancel)
 
         if state in (self.transfer.RECEIVED, self.transfer.FAILED):
             self.transfer.time_finished = time.time()
 
             button = gtk.Button(None, None)
+            button.set_tooltip_text(_('Close transfer'))
             button.set_image(self.__get_button_img(gtk.STOCK_CLEAR))
             button.connect('clicked', self._on_close_clicked)
             self.buttons.append(button)
-
-        if state == self.transfer.WAITING or state == self.transfer.TRANSFERRING:
-            b_cancel = gtk.Button(None, None)
-            b_cancel.connect('clicked', self._on_cancel_clicked)
-            b_cancel.set_image(self.__get_button_img(gtk.STOCK_CANCEL))
-            self.buttons.append(b_cancel)
 
         for button in self.buttons:
             self.pack_start(button, False, False)
@@ -252,12 +258,17 @@ class FileTransferTooltip(gtk.Window):
 
         if self.transfer.preview is not None:
             if(self.__fileprev==None):
-                self.__fileprev=tempfile.mkstemp(prefix=hashlib.md5(self.transfer.preview).hexdigest(), suffix=hashlib.md5(self.transfer.preview).hexdigest())[1]
+                self.__fileprev=tempfile.mkstemp(prefix=hashlib.md5(self.transfer.preview).hexdigest(), 
+                                                 suffix=hashlib.md5(self.transfer.preview).hexdigest())[1]
 
             tmpPrev = open( self.__fileprev, 'wb' )
             tmpPrev.write(self.transfer.preview)
             tmpPrev.close()
-            pixbuf = gtk.gdk.pixbuf_new_from_file(self.__fileprev)
+
+            try:
+                pixbuf = gtk.gdk.pixbuf_new_from_file(self.__fileprev)
+            except:
+                pixbuf = gtk.gdk.pixbuf_new_from_file(gui.theme.transfer_success) #sometime happens -.-
         else:
             pixbuf = gtk.gdk.pixbuf_new_from_file(gui.theme.transfer_success)
         #amsn sends a big. black preview? :S

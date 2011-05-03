@@ -46,7 +46,7 @@ class Theme(object):
     EMOTES[':-p'] = EMOTES[':P']
     EMOTES[':|'] = 'face-plain'
     EMOTES[':-|'] = EMOTES[':|']
-    EMOTES['*-)'] = 'face-uncertain'
+    EMOTES['*-)'] = 'face-rolling'
     EMOTES[':O'] = 'face-surprise'
     EMOTES[':o'] = EMOTES[':O']
     EMOTES[':-o'] = EMOTES[':O']
@@ -58,10 +58,11 @@ class Theme(object):
     EMOTES['(6)'] = 'face-devilish'
     EMOTES['(A)'] = 'face-angel'
     EMOTES['(a)'] = EMOTES['(A)']
-    #EMOTES['<:o)'] = ''
+    EMOTES['<:o)'] = 'face-party'
     EMOTES['(ap)'] = 'airplane'
     EMOTES['(au)'] = 'car'
-    #EMOTES['8o|'] = ''
+    EMOTES['8o|'] = 'face-teeth'
+    EMOTES['+o('] = 'face-sick'
     EMOTES['(b)'] = 'beer'
     EMOTES['(B)'] = EMOTES['(b)']
     EMOTES['(^)'] = 'cake'
@@ -82,22 +83,22 @@ class Theme(object):
     EMOTES['(C)'] = EMOTES['(c)']
     EMOTES['(co)'] = 'computer'
     EMOTES['(&)'] = 'dog'
-    #EMOTES[':-#'] = ''
+    EMOTES[':-#'] = 'face-zipped'
     EMOTES['(d)'] = 'drink'
     EMOTES['(D)'] = EMOTES['(d)']
     EMOTES['(e)'] = 'mail'
     EMOTES['(E)'] = EMOTES['(e)']
-    #EMOTES['8-)'] = ''
+    EMOTES['8-)'] = 'face-glasses'
     EMOTES['(~)'] = 'video'
-    #EMOTES['(yn)'] = ''
     EMOTES['(g)'] = 'present'
     EMOTES['(G)'] = EMOTES['(g)']
     EMOTES['(x)'] = 'girl'
     EMOTES['(X)'] = EMOTES['(x)']
     EMOTES['(%)'] = 'handcuffs'
     EMOTES['(h5)'] = 'hifive'
-    #EMOTES['(h)'] = ''
-    #EMOTES[':^)'] = ''
+    EMOTES['(h)'] = 'face-cool'
+    EMOTES['(H)'] = EMOTES['(h)']
+    EMOTES[':^)'] = 'face-uncertain'
     EMOTES['(ip)'] = 'island'
     EMOTES['({)'] = 'hugleft'
     EMOTES['(i)'] = 'lamp'
@@ -120,7 +121,7 @@ class Theme(object):
     EMOTES['(f)'] = 'rose'
     EMOTES['(F)'] = EMOTES['(f)']
     EMOTES['(})'] = 'hugright'
-    #EMOTES['^o)'] = ''
+    EMOTES['^o)'] = 'face-sarcastic'
     EMOTES[':-*'] = 'secret'
     EMOTES['(S)'] = 'moon'
     EMOTES['(sn)'] = 'snail'
@@ -149,24 +150,29 @@ class Theme(object):
     SOUND_FILES = ['alert.wav', 'nudge.wav', 'offline.wav', 'online.wav',
             'send.wav', 'type.wav']
     EMOTE_FILES = ['airplane.png', 'bad.png', 'bat.png', 'beer.png', 'bomb.png',
-        'bowl.png', 'boy.png', 'bunny.png', 'c10ud.png', 'cake.png',
-        'camera.png', 'can.png', 'car.png', 'cat.png', 'cigarette.png',
-        'clock.png', 'clown.png', 'coffee.png', 'coins.png', 'computer.png',
-        'console.png', 'cow.png', 'dog.png', 'drink.png', 'face-angel.png',
-        'face-angry.png', 'face-crying.png', 'face-devilish.png',
-        'face-embarrassed.png', 'face-kiss.png', 'face-laugh.png',
-        'face-plain.png', 'face-raspberry.png', 'face-sad.png', 'face-sick.png',
-        'face-smile.png', 'face-surprise.png', 'face-tired.png',
-        'face-uncertain.png', 'face-wink.png', 'face-worried.png', 'ghost.png',
-        'girl.png', 'goat.png', 'good.png', 'handcuffs.png', 'hifive.png',
-        'hugleft.png', 'hugright.png', 'island.png', 'lamp.png',
-        'love-over.png', 'love.png', 'mail.png', 'mobile.png', 'moon.png',
-        'msn.png', 'music.png', 'phone.png', 'pizza.png', 'plate.png',
-        'present.png', 'rainbow.png', 'rain.png', 'rose-dead.png', 'rose.png',
-        'secret.png', 'sheep.png', 'snail.png', 'soccerball.png', 'star.png',
-        'sun.png', 'turtle.png', 'tv.png', 'umbrella.png', 'video.png']
+        'bowl.png', 'boy.png', 'bunny.png', 'c10ud.png', 'cake.png', 
+        'camera.png', 'can.png', 'car.png', 'cat.png', 
+        'cigarette.png', 'clock.png', 'clown.png', 'coffee.png', 
+        'coins.png', 'computer.png', 'console.png', 'cow.png', 
+        'dog.png', 'drink.png', 'face-angel.png', 'face-angry.png', 
+        'face-cool.png', 'face-crying.png', 'face-devilish.png', 
+        'face-embarrassed.png', 'face-glasses.png', 'face-kiss.png', 
+        'face-laugh.png', 'face-party.png', 'face-plain.png', 
+        'face-raspberry.png', 'face-rolling.png', 'face-sad.png', 
+        'face-sarcastic.png', 'face-sick.png', 'face-smile.png', 
+        'face-surprise.png', 'face-teeth.png', 'face-tired.png', 
+        'face-uncertain.png', 'face-wink.png', 'face-worried.png', 
+        'face-zipped.png', 'ghost.png', 'girl.png', 'goat.png', 
+        'good.png', 'handcuffs.png', 'hifive.png', 'hugleft.png', 
+        'hugright.png', 'island.png', 'lamp.png', 'love-over.png', 
+        'love.png', 'mail.png', 'mobile.png', 'moon.png', 'msn.png', 
+        'music.png', 'phone.png', 'pizza.png', 'plate.png', 
+        'present.png', 'rainbow.png', 'rain.png', 'rose-dead.png', 
+        'rose.png', 'secret.png', 'sheep.png', 'snail.png', 
+        'soccerball.png', 'star.png', 'sun.png', 'turtle.png', 
+        'tv.png', 'umbrella.png', 'video.png']
     IMAGE_FILES = ['audiovideo.png', 'away.png', 'busy.png', 'call.png', 'chat.png', 'connect.png',
-        'email.png','group-chat.png', 'idle.png', 'logo.png', 'new-message.gif','mailbox.png',
+        'email.png','group-chat.png', 'idle.png', 'logo.png', 'logo16.png', 'logo32.png', 'logo48.png', 'new-message.gif','mailbox.png',
         'offline.png', 'online.png', 'password.png', 'typing.png', 'transfer_success.png', 'user.png',
         'users.png', 'user_def_image.png', 'user_def_imagetool.png', 'video.png']
 
@@ -208,6 +214,10 @@ class Theme(object):
         self.users = os.path.join(self.theme_path, "users.png")
         self.password = os.path.join(self.theme_path, "password.png")
         self.logo = os.path.join(self.theme_path, "logo.png")
+        self.logo16 = os.path.join(self.theme_path, "logo16.png")
+        self.logo32 = os.path.join(self.theme_path, "logo32.png")
+        self.logo48 = os.path.join(self.theme_path, "logo48.png")
+        self.logo96 = self.logo
         self.throbber = os.path.join(self.theme_path, "throbber.gif")
         self.connect = os.path.join(self.theme_path, "connect.png")
         self.chat = os.path.join(self.theme_path, "chat.png")
@@ -222,6 +232,7 @@ class Theme(object):
         self.service_facebook = os.path.join(self.theme_path, "facebook.png")
         self.service_gtalk = os.path.join(self.theme_path, "gtalk.png")
         self.service_dummy = os.path.join(self.theme_path, "dummy.png")
+        self.favorite = os.path.join(self.theme_path, "favorite.png")
 
         self.sound_alert = os.path.join(self.sound_theme_path, "alert.wav")
         self.sound_nudge = os.path.join(self.sound_theme_path, "nudge.wav")
@@ -298,9 +309,16 @@ class Theme(object):
         path = os.path.abspath(path)
 
         if os.access(path, os.R_OK) and os.path.isfile(path):
+            path = path.replace("\\", "/")
+
             if remove_protocol:
                 return path
             else:
+                if os.name == "nt":
+                    #if path[1] == ":":
+                    #    path = path[2:]
+                    path = "localhost/"+path
+
                 return 'file://' + path
 
         return None

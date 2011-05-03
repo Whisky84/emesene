@@ -18,16 +18,19 @@
 #
 #    Module written by Andrea Stagi <stagi.andrea(at)gmail.com>
 
+from synchronizers import nonesynch
 from synchronizers import emesenesynch
 
 SYNCHLIST={
 
-    "emesene":emesenesynch.emesenesynch,
+    "msn":emesenesynch.EmeseneSynch,
 
 }
 
 def get_synchronizer(session_type):
     sessions = SYNCHLIST.keys()
 
-    if session_type == "emesene":
+    if session_type == "msn":
         return SYNCHLIST[session_type]()
+
+    return nonesynch.NoneSynch()

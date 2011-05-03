@@ -20,8 +20,15 @@
 import os
 import gtk
 import pango
+import hashlib
+import tempfile
+
+import glib
+import Queue
+import threading
 
 import e3
+import urllib
 
 pixbufs = {}
 
@@ -46,7 +53,8 @@ def gtk_ico_image_load(path, icosize=None):
 
 def safe_gtk_pixbuf_load(path, size=None, animated=False):
     '''try to return a gtk pixbuf from path, if fails, return None'''
-    path = os.path.abspath(path)
+    if not os.path.isabs(path):
+        path = os.path.abspath(path)
 
     if animated:
         creator = gtk.gdk.PixbufAnimation
@@ -72,17 +80,15 @@ def safe_gtk_pixbuf_load(path, size=None, animated=False):
 
 def gtk_pixbuf_load(path, size=None, animated=False):
     '''try to return a gtk pixbuf from path, if fails, return None'''
-    path = os.path.abspath(path)
-
+    if not os.path.isabs(path):
+        path = os.path.abspath(path)
     if animated:
         creator = gtk.gdk.PixbufAnimation
     else:
         creator = gtk.gdk.pixbuf_new_from_file
 
     if file_readable(path):
-
         pixbuf = creator(path)
-
         if size is not None:
             width, height = size
             pixbuf = pixbuf.scale_simple(width, height,gtk.gdk.INTERP_BILINEAR)
@@ -90,13 +96,14 @@ def gtk_pixbuf_load(path, size=None, animated=False):
     else:
         return None
 
-
 def scale_nicely(pixbuf):
     '''scale a pixbuf'''
     return pixbuf.scale_simple(20, 20, gtk.gdk.INTERP_BILINEAR)
 
 def file_readable(path):
     '''return True if the file is readable'''
+    if path is None:
+        return False
     return os.access(path, os.R_OK) and os.path.isfile(path)
 
 def style_to_pango_font_description(style):
@@ -141,7 +148,7 @@ def pango_font_description_to_style(fdesc):
         font_italic, font_underline, font_strike, font_size)
 
 def simple_animation_scale(path,width, height):
-    f = open(path, 'r')
+    f = open(path, 'rb')
     pixloader = gtk.gdk.PixbufLoader('gif')
     pixloader.set_size(width, height)
     pixloader.write(f.read())
@@ -169,4 +176,85 @@ def simple_images_overlap(pixbuf_src,pixbuf_dest,x,y):
          ystart=pixbuf_src.props.height
 
     pixbuf_dest.composite(pixbuf_src, 0, 0, pixbuf_src.props.width, pixbuf_src.props.height, xstart+x, ystart+y, 1.0, 1.0, gtk.gdk.INTERP_HYPER, 255)
+    
+
+def makePreview(src):
+    try:
+        pbf = gtk_pixbuf_load(src,(96,96))
+    except glib.GError:
+        return None
+
+    filetmp = tempfile.mkstemp(prefix=hashlib.md5(src).hexdigest(), suffix=hashlib.md5(src).hexdigest())[1]
+
+    pbf.save(filetmp,"png")
+    
+    out_file = open(filetmp,"rb")
+    cnt = out_file.read()
+    out_file.close()
+
+    return cnt
+
+def path_to_url(path):
+    if os.name == "nt":
+        # on windows os.path.join uses backslashes
+        path = path.replace("\\", "/")
+        path = path[2:]
+
+    path = urllib.quote(path)
+    path = "file://" + path
+
+    return path
+
+class GtkRunner(threading.Thread):
+
+    """
+    Module written by Mariano Guerra. 
+    Visit http://python.org.ar/pyar/Recetario/Gui/Gtk/Runner for more.
+    """
+
+    '''run *func* in a thread with *args* and *kwargs* as arguments, when
+    finished call callback with a two item tuple containing a boolean as first
+    item informing if the function returned correctly and the returned value or
+    the exception thrown as second item
+    '''
+
+    def __init__(self, callback, func, *args, **kwargs):
+        threading.Thread.__init__(self)
+        self.setDaemon(True)
+
+        self.callback = callback
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+        self.result = Queue.Queue()
+
+        self.start()
+        glib.timeout_add_seconds(1, self.check)
+
+    def run(self):
+        '''
+        main function of the thread, run func with args and kwargs
+        and get the result, call callback with the (True, result)
+
+        if an exception is thrown call callback with (False, exception)
+        '''
+        try:
+            result = (True, self.func(*self.args, **self.kwargs))
+        except Exception, ex:
+            result = (False, ex)
+
+        self.result.put(result)
+
+    def check(self):
+        '''
+        check if func finished
+        '''
+        try:
+            result = self.result.get(False, 0.1)
+        except Queue.Empty:
+            return True
+
+        self.callback(result)
+        return False
 

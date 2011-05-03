@@ -401,9 +401,9 @@ class MsnPlusMarkupMohrtutchy:
         '''remove the [b][/b] etc markup for pango and html markup'''
 
         # already unicode here
-        text = unicode(text,'utf8')
+        text = unicode(text,'utf8') if type(text) is not unicode else text
 
-        all = removeList 
+        all = removeList
 
         for i in all:
             text = re.sub( i, '', text)
@@ -416,7 +416,7 @@ class MsnPlusMarkupMohrtutchy:
         pos = text.find("no-more-color")
         if pos != -1:
             text = text.replace("no-more-color",'')
-        
+
         return text
 
     def replaceMarkup( self, text ):
@@ -528,7 +528,7 @@ class MsnPlusMarkupMohrtutchy:
         elif code.lower() == 'mohr':
             return '#ff00de'
         elif code.lower() == 'c10ud' :
-            return '#313373'
+            return '#696969'
         else:
             return code
         

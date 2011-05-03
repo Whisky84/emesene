@@ -22,6 +22,7 @@ import os
 import xml.sax.saxutils
 import re
 import base64
+import urllib
 
 import gui
 
@@ -47,8 +48,8 @@ def unescape(string_):
     return xml.sax.saxutils.unescape(string_, dic_inv)
 
 def parse_emotes(message, cedict={}):
-    '''parser the emotes in a message, return a string with img tags
-    for the emotes acording to the theme'''
+    '''parse the emotes in a message, return a string with img tags
+    for the emotes according to the theme'''
 
     # Get the message body to parse emotes
     p = re.compile('<span.*?>(.*)</span>', re.DOTALL)
@@ -98,7 +99,11 @@ def replace_shortcut_with_tag(string, short, tag):
         return token
     irreplaceable = []
     result = re.sub(URL_REGEX, extract, string)
-    result = re.sub(r'(<img[^>]+>|&(?:#\d{1,3}|[\d\w]+);)', extract, result)
+    escaped_result = re.sub(r'(<img[^>]+>|&(?:#\d{1,3}|[\d\w]+);)',
+        extract, result)
+    if re.sub(r'(<img[^>]+>|&(?:#\d{1,3}|[\d\w]+);)', extract, short) \
+        not in escaped_result:
+        result = escaped_result
     result = result.replace(short, tag)
     irreplaceable.reverse()
     result = re.sub(token, lambda m: irreplaceable.pop(), result)
@@ -118,6 +123,8 @@ def replace_emotes(msgtext, cedict={}, cedir=None, sender=''):
                 path = gui.theme.emote_to_path(shortcut)
             else:
                 path = os.path.join(cedir, cedict[shortcut])
+                if os.name == "nt":
+                    path = path_to_url(path)
 
             if path is not None:
                 # creating sort of uid for image name since different users
@@ -159,3 +166,14 @@ def urlify(strng):
     '''replace urls by an html link'''
     return re.sub(URL_REGEX, replace_urls, strng)
 
+def path_to_url(path):
+    if os.name == "nt":
+        # on windows os.path.join uses backslashes
+        path = path.replace("\\", "/")
+        #path = path[2:]
+        path = "localhost/" + path
+
+    path = urllib.quote(path)
+    path = "file://" + path
+
+    return path

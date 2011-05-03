@@ -35,15 +35,21 @@ class Window(gtk.Window):
 
         self.set_location(width, height, posx, posy)
         self.set_title("emesene")
-        self.set_icon(gui.theme.logo)
+        try:
+            gtk.window_set_default_icon_list(\
+                 utils.safe_gtk_image_load(gui.theme.logo16).get_pixbuf(), \
+                 utils.safe_gtk_image_load(gui.theme.logo32).get_pixbuf(), \
+                 utils.safe_gtk_image_load(gui.theme.logo48).get_pixbuf(), \
+                 utils.safe_gtk_image_load(gui.theme.logo96).get_pixbuf())
+        except:
+            self.gtk.window_set_default_icon(gui.theme.logo)
 
-        if cb_on_close is not None:
-            self.cb_on_close = cb_on_close
-        else: # we're the main window: close button only hides it
-            self.cb_on_close = lambda *args: self.hide_on_delete()
+        self.cb_on_close = cb_on_close
+        self._state = 0
 
         self.connect('delete-event', self._on_delete_event)
         self.connect('key-press-event', self._on_key_press)
+        self.connect('window-state-event', self._on_window_state_event)
         self.content = None
 
         self.content_type = 'empty'
@@ -51,8 +57,8 @@ class Window(gtk.Window):
     def set_icon(self, icon):
         '''set the icon of the window'''
         if utils.file_readable(icon):
-            gtk.Window.set_icon(self,
-                utils.safe_gtk_image_load(icon).get_pixbuf())
+            gtk.Window.set_icon(self, \
+                        utils.safe_gtk_image_load(icon).get_pixbuf())
 
     def clear(self):
         '''remove the content from the main window'''
@@ -96,12 +102,20 @@ class Window(gtk.Window):
         self.content.show()
         self.content_type = 'main'
 
+        # hide the main window only when the user is connected
+        self.cb_on_close = lambda *args: self.hide_on_delete()
+
+    def on_disconnect(self, cb_on_close):
+        '''called when the user is disconnected'''
+        self.cb_on_close = cb_on_close
+
     def go_conversation(self, session):
         '''change to a conversation window'''
         ConversationManager = extension.get_default('conversation window')
         self.content = ConversationManager(session, self._on_last_tab_close)
         self.add(self.content)
         self.connect('focus-in-event', self.content._on_focus)
+        self.connect('key-press-event', self.content._on_key_press)
         self.content.show()
         self.content_type = 'conversation'
         self.content._set_accels()
@@ -171,7 +185,15 @@ class Window(gtk.Window):
     def show(self):
         '''override the method to set the position
         '''
-        gtk.Window.deiconify(self)
         gtk.Window.show(self)
         self.set_location()
 
+    def _on_window_state_event(self, window, state):
+        '''callew when window state is changed
+        '''
+        self._state = state.new_window_state if state.new_window_state & gtk.gdk.WINDOW_STATE_WITHDRAWN == 0 else self._state
+
+    def is_maximized(self):
+        '''return True is window is maximized, False otherwise
+        '''
+        return self._state & gtk.gdk.WINDOW_STATE_MAXIMIZED == gtk.gdk.WINDOW_STATE_MAXIMIZED

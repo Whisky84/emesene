@@ -20,6 +20,7 @@ import os
 import time
 import utils
 import indicate
+import Renderers
 
 from BaseTray import BaseTray
 
@@ -101,8 +102,8 @@ class MessagingMenu(BaseTray):
         This is fired when a new message arrives to a user.
         """
         contact = self.handler.session.contacts.get(account)
-        if cid not in self.indicator_dict.values():
 
+        if cid not in self.indicator_dict.values():
             conv_manager = self._get_conversation_manager(cid, account)
 
             if conv_manager:
@@ -111,7 +112,7 @@ class MessagingMenu(BaseTray):
                 if not (conv_manager.is_active() and \
                          conv.members == [account]):
 
-                    self._create_indicator("im", contact.nick, account, cid=cid)
+                    self._create_indicator("im", Renderers.msnplus_to_plain_text(contact.nick), account, cid=cid)
 
     def _on_message_read(self, conv):
         """
@@ -173,6 +174,12 @@ class MessagingMenu(BaseTray):
                 self.indicator_dict[ind] = cid
                 self.r_indicator_dict[cid] = ind
 
+            for old_cid in self.indicator_dict.values():
+                if old_cid not in self.handler.session.conversations.keys():
+                    # workaround: kill the orphan indicator
+                    ind = self.r_indicator_dict[old_cid]
+                    del self.indicator_dict[ind]
+                    del self.r_indicator_dict[old_cid]
         else:
             return
 
@@ -193,8 +200,8 @@ class MessagingMenu(BaseTray):
 
         if self.indicator_dict[indicator] is not None:
             del self.indicator_dict[indicator]
-        if self.r_indicator_dict[conv.cid] is not None:
-            del self.r_indicator_dict[conv.cid]
+        if self.r_indicator_dict[cid] is not None:
+            del self.r_indicator_dict[cid]
 
         # Hide the indicator - user has clicked it so we've no use for it now.
         indicator.hide()

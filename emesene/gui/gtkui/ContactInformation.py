@@ -32,6 +32,8 @@ import Renderers
 import logging
 log = logging.getLogger('gtkui.ContactInformation')
 
+from IconView import IconView
+
 class ContactInformation(gtk.Window, gui.base.ContactInformation):
     '''a window that displays information about a contact'''
 
@@ -43,7 +45,6 @@ class ContactInformation(gtk.Window, gui.base.ContactInformation):
         self.set_title(_('Contact information (%s)') % (account,))
         self.set_role("dialog")
         self.set_type_hint(gtk.gdk.WINDOW_TYPE_HINT_DIALOG)
-        self.set_icon(utils.safe_gtk_image_load(gui.theme.logo).get_pixbuf())
 
         self.tabs = gtk.Notebook()
 
@@ -58,12 +59,20 @@ class ContactInformation(gtk.Window, gui.base.ContactInformation):
         '''create all the tabs on the window'''
         self.info = InformationWidget(self.session, self.account)
         self.nicks = ListWidget(self.session, self.account)
+
+        self.avatar_manager = gui.base.AvatarManager(self.session)
+
+        account_path = self.avatar_manager.get_contact_avatars_dir(self.account)
+
+        self.avatars = IconView(_('Avatar history'), [account_path],
+                        None, None, IconView.TYPE_SELF_PICS, None)
         self.messages = ListWidget(self.session, self.account)
         self.status = ListWidget(self.session, self.account)
         self.chats = ChatWidget(self.session, self.account)
 
         self.tabs.append_page(self.info, gtk.Label(_('Information')))
         self.tabs.append_page(self.nicks, gtk.Label(_('Nick history')))
+        self.tabs.append_page(self.avatars, gtk.Label(_('Avatar history')))
         self.tabs.append_page(self.messages, gtk.Label(_('Message history')))
         self.tabs.append_page(self.status, gtk.Label(_('Status history')))
         self.tabs.append_page(self.chats, gtk.Label(_('Chat history')))
@@ -254,7 +263,7 @@ class ChatWidget(gtk.VBox):
             self.contact = self.session.contacts.get(account)
 
         OutputText = extension.get_default('conversation output')
-        self.text = OutputText(session.config)
+        self.text = OutputText(session.config, None)
         self.formatter = e3.common.MessageFormatter(session.contacts.me)
 
         buttons = gtk.HButtonBox()
@@ -274,9 +283,9 @@ class ChatWidget(gtk.VBox):
         from_datetime = datetime.date(from_year, from_month + 1,
                 from_day) - datetime.timedelta(30)
 
-        from_t = from_datetime.timetuple()
-
-        self.from_calendar.select_month(from_t.tm_mon - 1, from_t.tm_year)
+        self.from_calendar.select_month(from_datetime.month - 1,
+                from_datetime.year)
+        self.from_calendar.select_day(from_datetime.day)
         self.to_calendar = gtk.Calendar()
 
         save.connect('clicked', self._on_save_clicked)
@@ -325,7 +334,12 @@ class ChatWidget(gtk.VBox):
     def refresh_history(self):
         '''refresh the history according to the values on the calendars
         '''
-        self.text.clear()
+        if self.contact:
+            his_picture = self.contact.picture or utils.path_to_url(os.path.abspath(gui.theme.user))
+            my_picture = self.session.contacts.me.picture or utils.path_to_url(os.path.abspath(gui.theme.user))
+            self.text.clear(self.account, self.contact.nick, self.contact.display_name, my_picture, his_picture)
+        else:
+            self.text.clear()
         self.request_chats_between(1000, self._on_chats_ready)
 
     def request_chats_between(self, limit, callback):
@@ -356,24 +370,58 @@ class ChatWidget(gtk.VBox):
 
     def _on_chats_ready(self, results):
         '''called when the chat history is ready'''
+
+        account_colors = {}
+        style = e3.Style()
+        font_color_default = style.color.to_hex()
+        possible_colors = ["#0000FF", "#00FFFF", "#FF0000",
+                           "#FF00FF", font_color_default]
+
         if not results:
             return
 
         for stat, timestamp, msg_text, nick, account in results:
-            contact = e3.Contact(account, nick=nick)
-
             is_me = self.session.contacts.me.account == account
-            datetimestamp = datetime.datetime.fromtimestamp(timestamp)
+            if is_me:
+                contact = self.session.contacts.me
+            else:
+                contact = self.session.contacts.get(account)
+
+            if contact == None:
+                contact = e3.Contact(account, nick=nick)
+
+            datetimestamp = datetime.datetime.utcfromtimestamp(timestamp)
+            message = e3.Message(e3.Message.TYPE_MESSAGE, msg_text,
+                        account, timestamp=datetimestamp)
 
             if is_me:
                 self.text.send_message(self.formatter, contact,
-                        msg_text, None, None, None, self.first)
+                        message, None, None, self.first)
             else:
-                message = e3.Message(e3.Message.TYPE_MESSAGE, msg_text,
-                            account, timestamp=datetimestamp)
+                try:
+                    account_colors[account]
+                except KeyError:
+                    if not len(possible_colors) == 0:
+                        account_colors[account] = possible_colors.pop()
+                    else:
+                        account_colors[account] = font_color_default
+
+                message.style = self._get_style(account_colors[account])
 
                 self.text.receive_message(self.formatter, contact, message,
                         None, None, self.first)
 
             self.first = False
+
+    def _get_style(self, color):
+
+        try:
+            color = e3.Color.from_hex(color)
+        except ValueError:
+            color = self.session.config.font_color = '#000000'
+            color = e3.Color.from_hex(font_color)
+
+        cstyle = e3.Style(color = color)
+
+        return cstyle
 

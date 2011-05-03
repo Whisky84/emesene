@@ -21,7 +21,6 @@ import pango
 import gobject
 
 import Renderers
-import extension
 
 class TextField(gtk.VBox):
     '''this class represent a widget that is a button and when clicked
@@ -56,7 +55,7 @@ class TextField(gtk.VBox):
         self.pack_start(self.entry, True, True)
 
         self.button.add(self.label)
-        self.label.set_markup(self._text or self.empty_text)
+        self.text = self._text or self.empty_text
 
         self.button.connect('clicked', self.on_button_clicked)
         self.entry.connect('activate', self.on_entry_activate)
@@ -65,6 +64,8 @@ class TextField(gtk.VBox):
 
     def on_button_clicked(self, button):
         '''method called when the button is clicked'''
+        if (self.entry.get_text() == self.empty_text):
+            self.entry.set_text("")
         self.button.hide()
         self.entry.show()
         self.entry.grab_focus()
@@ -109,7 +110,8 @@ class TextField(gtk.VBox):
     def _set_text(self, value):
         '''set the value of text'''
         self._text = value
-        self.label.set_markup(Renderers.msnplus_to_list(gobject.markup_escape_text(self._text)) or self.empty_text)
+        self.label.set_markup(Renderers.msnplus_to_list(
+            gobject.markup_escape_text(self._text or self.empty_text)))
         self.entry.set_text(self._text)
 
     text = property(fget=_get_text, fset=_set_text)
