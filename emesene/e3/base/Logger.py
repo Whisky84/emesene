@@ -537,14 +537,13 @@ class Logger(object):
 
     def execute(self, query, args=()):
         '''execute the query with optional args'''
-        #log.debug(query + str(args))
-        #print query, args
         self.cursor.execute(query, args)
 
     # utility methods
 
-    def add_event(self, event, status, payload, src, dest=None):
+    def add_event(self, event, status, payload, src, dest=None, ext_time=None):
         '''add an event on the fact and the dimensiones using the actual time'''
+
         id_event = self.insert_event(event)
         (id_src_info, id_src_acc) = self.insert_info(src.account, src.id,
             src.status, src.nick, src.message, src.path)
@@ -556,8 +555,13 @@ class Logger(object):
             id_dest_info = None
             id_dest_acc = None
 
-        id_time = self.insert_time_now()
-        timestamp = time.time()
+        if ext_time:
+            timestamp = ext_time
+            (year, month, day, hour, minute, seconds, wday, yday, tm_isdst) = time.gmtime(ext_time)
+            id_time = self.insert_time(year, month, day, wday, hour, minute, seconds)
+        else: 
+            id_time = self.insert_time_now()
+            timestamp = time.time()
 
         self.insert_fact_event(id_time, id_event, id_src_info, id_dest_info,
             id_src_acc, id_dest_acc, status, payload, timestamp)
@@ -770,8 +774,8 @@ class LoggerProcess(threading.Thread):
         action, args = data
 
         if action == 'log':
-            event, status, payload, src, dest = args
-            self.logger.add_event(event, status, payload, src, dest)
+            event, status, payload, src, dest, new_time = args
+            self.logger.add_event(event, status, payload, src, dest, new_time)
         elif action == 'quit':
             return True
         elif action in self.actions:
@@ -811,9 +815,9 @@ class LoggerProcess(threading.Thread):
 
         return True
 
-    def log(self, event, status, payload, src, dest=None):
+    def log(self, event, status, payload, src, dest=None, new_time=None):
         '''add an event to the log database'''
-        self.input.put(('log', (event, status, payload, src, dest)))
+        self.input.put(('log', (event, status, payload, src, dest, new_time)))
 
     def quit(self):
         '''stop the logger thread, and close the logger'''

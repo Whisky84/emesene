@@ -17,16 +17,16 @@
 #    along with emesene; if not, write to the Free Software
 #    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
+from __future__ import division
+
 import sys
 import gtk
 import pango
 import cairo
 import gobject
 
-import gui
 from gui.base import Plus
 import extension
-import utils
 import Parser
 
 import logging
@@ -38,6 +38,15 @@ def replace_markup(markup, arg=None):
 
     markup = markup.replace("[$small]", "<small>")
     markup = markup.replace("[$/small]", "</small>")
+
+    if markup.count("[$COLOR=") > 0:
+        hexcolor = color = markup.split("[$COLOR=")[1].split("]")[0]
+        if color.count("#") == 0:
+            hexcolor = "#" + color
+
+        markup = markup.replace("[$COLOR=" + color + "]", \
+                "<span foreground='" + hexcolor + "'>")
+        markup = markup.replace("[$/COLOR]", "</span>")
 
     markup = markup.replace("[$b]", "<b>")
     markup = markup.replace("[$/b]", "</b>")
@@ -97,10 +106,12 @@ class CellRendererFunction(gtk.GenericCellRenderer):
         if not self._style_handler_id:
             self._style_handler_id = widget.connect('style-set',
                     self._style_set)
-
+        
         layout = self.get_layout(widget)
-        width, height = layout.get_pixel_size()
-
+        if layout:
+            width, height = layout.get_pixel_size()
+        else:
+            width, height = [0,0]
         return (0, 0, -1, height + (self.ypad * 2))
 
     def do_get_property(self, prop):
@@ -128,9 +139,10 @@ class CellRendererFunction(gtk.GenericCellRenderer):
         width -= self.xpad
         ctx = win.cairo_create()
         layout = self.get_layout(widget)
-        layout.set_width(width  * pango.SCALE)
-        layout.set_in_color_override_mode(flags in self._selected_flgs)
-        layout.draw(ctx, (x_coord, y_coord, width, height))
+        if layout:
+            layout.set_width(width  * pango.SCALE)
+            layout.set_in_color_override_mode(flags in self._selected_flgs)
+            layout.draw(ctx, (x_coord, y_coord, width, height))
 
     def get_layout(self, widget):
         '''Gets the Pango layout used in the cell in a TreeView widget.'''
@@ -491,7 +503,7 @@ class SmileyLayout(pango.Layout):
         ascent = pango.ASCENT(logical)
         decent = pango.DESCENT(logical)
         self._text_height =  ascent + decent
-        self._base_to_center = (self._text_height / 2) - decent
+        self._base_to_center = (self._text_height // 2) - decent
         self._update_smilies()
 
     def _update_smilies(self):
@@ -519,7 +531,7 @@ class SmileyLayout(pango.Layout):
 
                 self._smilies_scaled[index] = npix
                 rect = (0,
-                    -1 * (self._base_to_center + (height /2)) * pango.SCALE,
+                    -1 * (self._base_to_center + (height // 2)) * pango.SCALE,
                          width * pango.SCALE, height * pango.SCALE)
 
                 self._base_attrlist.insert(pango.AttrShape((0, 0, 0, 0),
@@ -673,13 +685,13 @@ class SmileyLayout(pango.Layout):
                 x, y, width, height = self.index_to_pos(index)
                 pixbuf = self._smilies_scaled[index]
                 tx = pxls(x)
-                ty = pxls(y) + (pxls(height)/2) - (pixbuf.get_height()/2)
+                ty = pxls(y) + (pxls(height) // 2) - (pixbuf.get_height() // 2)
                 ctx.set_source_pixbuf(pixbuf, tx, ty)
                 ctx.paint()
             except Exception, error:
                 log.error("Error when painting smilies: %s" % error)
 
-class SmileyLabel(gtk.Widget):
+class SmileyLabel(gtk.Label):
     '''Label with smiley support. '''
 
     __gsignals__ = { 'size_request' : 'override',
@@ -856,7 +868,8 @@ class AvatarRenderer(gtk.GenericCellRenderer):
 
         return (0, 0,  width, height)
 
-    def func(self, model, path, iter, (image, tree)):
+    def func(self, model, path, iter, image_and_tree):
+      image, tree = image_and_tree
       if model.get_value(iter, 0) == image:
          self.redraw = 1
          cell_area = tree.get_cell_area(path, tree.get_column(1))
@@ -881,7 +894,6 @@ class AvatarRenderer(gtk.GenericCellRenderer):
         """Prepare rendering setting for avatar"""
         xpad, ypad = self._get_padding()
         x, y, width, height = cell_area
-        cell = (x, y, width, height)
         ctx = window.cairo_create()
         ctx.translate(x, y)
 
@@ -937,13 +949,13 @@ class AvatarRenderer(gtk.GenericCellRenderer):
         if position in (gtk.ANCHOR_NW, gtk.ANCHOR_W, gtk.ANCHOR_SW):
             x = 0
         elif position in (gtk.ANCHOR_N, gtk.ANCHOR_CENTER, gtk.ANCHOR_S):
-            x = (dimention/2) - (scale_width/2)
+            x = (dimention // 2) - (scale_width // 2)
         else:
             x = dimention - scale_width
         if position in (gtk.ANCHOR_NW, gtk.ANCHOR_N, gtk.ANCHOR_NE):
             y = 0
         elif position in (gtk.ANCHOR_E, gtk.ANCHOR_CENTER, gtk.ANCHOR_W):
-            y = (dimention/2) - (scale_height/2)
+            y = (dimention // 2) - (scale_height // 2)
         else:
             y = dimention - scale_height
 

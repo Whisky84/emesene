@@ -35,6 +35,10 @@ class TrayIcon(gtk.StatusIcon, BaseTray):
     """
     A widget that implements the tray icon of emesene for gtk
     """
+    NAME = 'Tray Icon'
+    DESCRIPTION = 'The gtk tray icon'
+    AUTHOR = 'Mariano Guerra'
+    WEBSITE = 'www.emesene.org'
 
     def __init__(self, handler, main_window=None):
         """
@@ -43,10 +47,6 @@ class TrayIcon(gtk.StatusIcon, BaseTray):
         handler -- a e3common.Handler.TrayIconHandler object
         """
         BaseTray.__init__(self)
-        NAME = 'Tray Icon'
-        DESCRIPTION = 'The gtk tray icon'
-        AUTHOR = 'Mariano Guerra'
-        WEBSITE = 'www.emesene.org'
 
         gtk.StatusIcon.__init__(self)
         self.handler = handler
@@ -107,7 +107,7 @@ class TrayIcon(gtk.StatusIcon, BaseTray):
         (includes clicking the icon)
         """
 
-        if self.last_new_message is not None and self.is_blinking():
+        if self.last_new_message is not None and self.get_blinking():
             # show the tab with the latest message
             cid = self.last_new_message
             conv_manager = self._get_conversation_manager(cid)

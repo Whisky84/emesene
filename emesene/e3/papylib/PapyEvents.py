@@ -67,12 +67,15 @@ class ClientEvents(papyon.event.ClientEventInterface):
             elif error == papyon.event.ProtocolError.SERVER_DOWN:
                 self._client.session.add_event(Event.EVENT_DISCONNECTED,
                                                'Server down', 1)#for reconnecting
+            elif error == papyon.event.ProtocolError.AUTHENTICATION_FAILED:
+                self._client.session.add_event(Event.EVENT_DISCONNECTED,
+                                               'Authentication failure', 0)
             else:
                 self._client.session.add_event(Event.EVENT_DISCONNECTED,
                                                'Protocol error', 0)
         elif error_type == papyon.event.ClientErrorType.ADDRESSBOOK:#TODO
             log.error("Client got an error handling addressbook: %s %s" % (error_type, error))
-        elif error_type == papyon.event.ClientErrorType.OFFLINE_MESSAGGES:#TODO
+        elif error_type == papyon.event.ClientErrorType.OFFLINE_MESSAGES:#TODO
             log.error("Client got an error handling offline messages: %s %s" % (error_type, error))
         else:
             log.error("Client got an error: %s %s" % (error_type, error))
@@ -131,10 +134,7 @@ class ContactEvent(papyon.event.ContactEventInterface):
         self._client._on_contact_media_changed(contact)
 
     def on_contact_infos_changed(self, contact, infos):
-        # TODO: handle this
-        """Called when the infos of a contact changes.
-            @param contact: the contact whose presence changed
-            @type contact: L{Contact<papyon.profile.Contact>}"""
+        '''called when setting stuff such as alias'''
         log.info("Contact informations changed: %s %s" % (contact, infos))
 
     def on_contact_client_capabilities_changed(self, contact):

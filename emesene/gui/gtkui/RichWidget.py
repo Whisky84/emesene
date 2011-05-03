@@ -16,7 +16,6 @@
 #    along with emesene; if not, write to the Free Software
 #    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
-import gtk
 import xml.parsers.expat
 
 import e3
@@ -85,6 +84,8 @@ class RichWidget(object):
                 self.put_image(child.src, child.alt)
             elif child.tag == 'br':
                 self.new_line()
+            elif child.tag == 'a':
+                self.put_link(child.href)
             else:
                 self._put_formatted(child, fg_color, bg_color, font, size,
                     bold, italic, underline, strike)
@@ -98,4 +99,7 @@ class RichWidget(object):
         '''put a new line on the text'''
         raise NotImplementedError('Not implemented')
 
+    def put_link(self, link):
+        '''insert a link at the current position'''
+        raise NotImplementedError('Not implemented')
 

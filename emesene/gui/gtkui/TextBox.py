@@ -180,7 +180,8 @@ class InputText(TextBox):
         try:
             import gtkspell
             if self.config.b_enable_spell_check:
-                self.spell_checker = gtkspell.Spell(self._textbox)
+                spell_lang = self.config.get_or_set("spell_lang", "en")
+                self.spell_checker = gtkspell.Spell(self._textbox, spell_lang)
         except Exception, e:
             log.warning("Could not load spell-check: %s" % e)
 
@@ -335,7 +336,13 @@ class OutputText(TextBox):
     def append(self, text, cedict,scroll=True):
         '''append formatted text to the widget'''
         if self.config.b_show_emoticons:
-            text = MarkupParser.parse_emotes(text, cedict)
+            text = MarkupParser.replace_emotes(text, cedict)
+
+        #Parse links
+        text = MarkupParser.urlify(text)
+
+        #Parse links
+        text = MarkupParser.urlify(text)
 
         TextBox.append(self, text, scroll)
 
@@ -360,9 +367,10 @@ class OutputText(TextBox):
         '''add a message to the widget'''
         is_raw, consecutive, outgoing, first, last = formatter.format(contact)
 
-        middle = MarkupParser.escape(message.body)
         if not is_raw:
             middle = e3.common.add_style_to_message(message.body, message.style)
+        else:
+            middle = MarkupParser.escape(message.body)
 
         self.append(first + middle + last, cedict, self.config.b_allow_auto_scroll)
 

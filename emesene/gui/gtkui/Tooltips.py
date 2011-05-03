@@ -16,14 +16,16 @@
 #    You should have received a copy of the GNU General Public License
 #    along with emesene; if not, write to the Free Software
 #    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+from __future__ import division
 
 import e3
 import utils
 
 import gtk
-import time
 from glib import timeout_add, source_remove
 import xml.sax.saxutils
+
+import gui
 
 import Renderers
 
@@ -132,7 +134,7 @@ class Tooltips(gtk.Window):
         ''' shows the tooltip of an e3.Contact '''
         self.tag = -1
 
-        text = xml.sax.saxutils.escape(Renderers.msnplus_to_plain_text(obj.nick)) 
+        text = xml.sax.saxutils.escape(Renderers.msnplus_to_plain_text(obj.display_name)) 
         text += '\n' + xml.sax.saxutils.escape(Renderers.msnplus_to_plain_text(obj.message))
         text += '\n' + self.data_string % (\
             obj.account, self.yes_no[bool(obj.blocked)])
@@ -140,7 +142,15 @@ class Tooltips(gtk.Window):
         self.label.set_markup(text)
 
         # Sets tooltip image
-        pixbuf = utils.safe_gtk_pixbuf_load(obj.picture, (96,96))
+        if obj.picture!="":
+            pixbuf = utils.gtk_pixbuf_load(obj.picture, (96,96))
+        else:
+            pixbuf = utils.gtk_pixbuf_load(gui.theme.user_def_image)
+
+        if bool(obj.blocked)==True:
+            pixbufblock=utils.gtk_pixbuf_load(gui.theme.blocked_overlay_big)
+            utils.simple_images_overlap(pixbuf,pixbufblock,-pixbufblock.props.width,-pixbufblock.props.width)
+
         self.image.set_from_pixbuf(pixbuf)
         self.image.show()
 
@@ -167,11 +177,11 @@ class Tooltips(gtk.Window):
         ''' calculates the position of the tooltip '''
         x_root, y_root, origY = origCoords
         currentY = viewWindow.get_pointer()[1]
-        
+
         width, height = self.get_size()
         s_width, s_height = gtk.gdk.screen_width(), gtk.gdk.screen_height()
 
-        x = int(x_root)- width/2
+        x = int(x_root) - width // 2
         if currentY >= origY:
             y = int(y_root)+ 24
         else:
