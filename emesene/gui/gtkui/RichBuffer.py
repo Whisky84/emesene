@@ -19,8 +19,10 @@
 
 import gtk
 import pango
+import urllib
 
 import RichWidget
+from gui import MarkupParser
 
 class RichBuffer(gtk.TextBuffer, RichWidget.RichWidget):
     '''a buffer that makes it easy to manipulate a gtk textview with
@@ -65,7 +67,11 @@ class RichBuffer(gtk.TextBuffer, RichWidget.RichWidget):
         '''insert an image at the current position
         tip it's the alt text on mouse over
         and the text copied to the clipboard'''
-        if path.startswith("file://"):
+        if path.startswith("file://localhost/"):
+            if path.count("@") == 0: #if quoted, @ is %40, not @
+                path = urllib.unquote(path)
+            pixbuf = gtk.gdk.PixbufAnimation(path[17:])
+        elif path.startswith("file://"):
             pixbuf = gtk.gdk.PixbufAnimation(path[7:])
         else:
             pixbuf = gtk.gdk.PixbufAnimation(path)
@@ -86,7 +92,7 @@ class RichBuffer(gtk.TextBuffer, RichWidget.RichWidget):
     def put_link(self, link):
         '''insert a link at the current position'''
         lnk = gtk.Label()
-        lnk.set_markup("<a href='" + link +"'>" + link + "</a>")
+        lnk.set_markup(MarkupParser.urlify(MarkupParser.escape(link)))
         lnk.show()
         self.put_widget(lnk)
 
