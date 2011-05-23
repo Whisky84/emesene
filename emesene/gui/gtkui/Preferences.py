@@ -316,19 +316,11 @@ class BaseTable(gtk.Table):
 
         self.append_row(hbox, None)
 
-    def create_combo_with_label(self, text, getter, property_name,values=None):
-        """creates and return a new ComboBox with a label and append values to the combo
-        """
+    def fill_combo(self, combo, getter, property_name, values=None):
         if values:
             default = getter()[values.index(self.get_attr(property_name))]
         else:
             default = self.get_attr(property_name)
-        hbox = gtk.HBox()
-        hbox.set_homogeneous(True)
-        label = gtk.Label(text)
-        label.set_alignment(0.0, 0.5)
-        combo = gtk.combo_box_new_text()
-
         count = 0
         default_count = 0
         for item in getter():
@@ -340,10 +332,26 @@ class BaseTable(gtk.Table):
 
         combo.set_active(default_count)
 
+    def create_combo (self, getter, property_name, values=None, changed_cb = None):
+        combo = gtk.combo_box_new_text()
+        self.fill_combo(combo, getter, property_name, values)
+        if changed_cb:
+            combo.connect('changed', changed_cb, property_name, values)
+        else:
+            combo.connect('changed', self.on_combo_changed, property_name, values)
+        return combo
+
+    def create_combo_with_label(self, text, getter, property_name,values=None, changed_cb = None):
+        """creates and return a new ComboBox with a label and append values to the combo
+        """
+        hbox = gtk.HBox()
+        hbox.set_homogeneous(True)
+        label = gtk.Label(text)
+        label.set_alignment(0.0, 0.5)
+        combo = self.create_combo(getter, property_name, values, changed_cb)
+
         hbox.pack_start(label, True, True)
         hbox.pack_start(combo, False)
-
-        combo.connect('changed', self.on_combo_changed, property_name, values)
 
         return hbox
 
@@ -630,7 +638,7 @@ class Theme(BaseTable):
     def __init__(self, session):
         """constructor
         """
-        BaseTable.__init__(self, 5, 1)
+        BaseTable.__init__(self, 6, 1)
         self.set_border_width(5)
         self.session = session
 
@@ -638,7 +646,8 @@ class Theme(BaseTable):
 
         self.session.config.get_or_set('adium_theme', 'renkoo')
 
-        cb_override_text_color = self.create_check(_('Override incoming text color'), 'session.config.b_override_text_color')
+        cb_override_text_color = self.create_check(_('Override incoming text color'),
+            'session.config.b_override_text_color')
         self.session.config.subscribe(self._on_cb_override_text_color_toggled,
             'b_override_text_color')
 
@@ -657,7 +666,8 @@ class Theme(BaseTable):
 
         self.append_row(h_color_box)
         #update ColorButton sensitive
-        self._on_cb_override_text_color_toggled(self.session.config.get_or_set('b_override_text_color', False))
+        self._on_cb_override_text_color_toggled(
+                self.session.config.get_or_set('b_override_text_color', False))
 
         self.append_combo(_('Image theme'), gui.theme.get_image_themes,
             'session.config.image_theme')
@@ -665,15 +675,42 @@ class Theme(BaseTable):
             'session.config.sound_theme')
         self.append_combo(_('Emote theme'), gui.theme.get_emote_themes,
             'session.config.emote_theme')
-        self.append_combo(_('Adium theme'), gui.theme.get_adium_themes,
-            'session.config.adium_theme')
+        self.adium_theme_combo = self.create_combo_with_label(_('Adium theme'),
+                gui.theme.get_adium_themes, 'session.config.adium_theme',
+                changed_cb = self._on_adium_theme_combo_changed)
+        self.append_row(self.adium_theme_combo)
+        hbox = gtk.HBox()
+        hbox.set_homogeneous(True)
+        label = gtk.Label(_('Adium theme variant'))
+        label.set_alignment(0.0, 0.5)
+        self.adium_variant_combo = self.create_combo(gui.theme.get_adium_theme_variants,
+                'session.config.adium_theme_variant')
+        hbox.pack_start(label, True, True)
+        hbox.pack_start(self.adium_variant_combo, False)
+        self.append_row(hbox, None)
+
         self.append_entry_default(_('Nick format'), 'nick',
                 'session.config.nick_template_clist', ContactList.NICK_TPL)
         self.append_entry_default(_('Group format'), 'group',
                 'session.config.group_template', ContactList.GROUP_TPL)
 
-        self.add_button(_('Apply'), 0, 7,
+        self.add_button(_('Apply'), 0, 8,
                 self.on_redraw_main_screen, 0, 0)
+
+    def _on_adium_theme_combo_changed(self, combo, property_name, values=None):
+        #update adium variants combo
+        self.on_combo_changed(combo, property_name, values)
+
+        image_name = self.session.config.get_or_set('image_theme', 'default')
+        emote_name = self.session.config.get_or_set('emote_theme', 'default')
+        sound_name = self.session.config.get_or_set('sound_theme', 'default')
+        conv_name = self.session.config.get_or_set('adium_theme',
+                'renkoo.AdiumMessagesStyle')
+        gui.theme.set_theme(image_name, emote_name, sound_name, conv_name)
+        #clear combo
+        self.adium_variant_combo.get_model().clear()
+        self.fill_combo(self.adium_variant_combo,
+            gui.theme.get_adium_theme_variants, 'session.config.adium_theme_variant')
 
     def _on_cb_override_text_color_toggled(self, value):
         if value:
