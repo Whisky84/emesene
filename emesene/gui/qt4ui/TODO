@@ -48,6 +48,7 @@ X Support for animated avatars
 X No need for case-insensitive smiley shortcuts search
 
 - Watch at the FIXMEs in ConversationPage.py
+- URGENT: check if the conversation windows update when display pictures change.
 
 - Think about KDE4 integration
 - Smooth transitions between  TopLevel window's pages
